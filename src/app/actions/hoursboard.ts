@@ -8,6 +8,8 @@ import {
   createShift,
   deleteShift,
   updateEmployer,
+  updatePayPeriodDay,
+  createNextPayPeriod,
 } from "@/lib/hoursboard";
 
 function revalidateAll() {
@@ -50,6 +52,49 @@ export async function deleteShiftAction(formData: FormData) {
   if (!id) throw new Error("Shift ID required.");
   await deleteShift(id);
   revalidateAll();
+}
+
+export interface WorksheetDayInput {
+  id: string;
+  workHours: number;
+  payAwardType: string;
+  payRate: number;
+  notes: string | null;
+}
+
+/** Saves all 14 rows of the worksheet in a single action call */
+export async function saveWorksheetAction(
+  days: WorksheetDayInput[]
+): Promise<void> {
+  await Promise.all(
+    days.map((d) =>
+      updatePayPeriodDay(d.id, {
+        workHours: d.workHours,
+        payAwardType: d.payAwardType,
+        payRate: d.payRate,
+        notes: d.notes,
+      })
+    )
+  );
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/hoursboard");
+}
+
+/** Creates the next pay period, returns its id (client component calls this then router.push) */
+export async function createNextPayPeriodAction(): Promise<{ id: string }> {
+  const user = await getDemoUser();
+  const period = await createNextPayPeriod(user.id);
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/hoursboard");
+  return { id: period.id };
+}
+
+/** Same but used from a form action — redirects server-side */
+export async function createFirstPayPeriodFormAction(): Promise<void> {
+  const user = await getDemoUser();
+  const period = await createNextPayPeriod(user.id);
+  revalidatePath("/dashboard");
+  redirect(`/dashboard/hoursboard?period=${period.id}`);
 }
 
 export async function updateEmployerAction(formData: FormData) {

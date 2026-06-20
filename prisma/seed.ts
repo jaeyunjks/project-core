@@ -2,7 +2,6 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// Inline calculations so seed has no local import dependencies
 function calcHours(start: string, end: string, breakMins: number): number {
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
@@ -14,6 +13,29 @@ function calcHours(start: string, end: string, breakMins: number): number {
   return Math.round((Math.max(0, worked) / 60) * 100) / 100;
 }
 
+function dow(dateStr: string): number {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).getDay();
+}
+
+function awardType(dateStr: string): string {
+  const day = dow(dateStr);
+  if (day === 6) return "saturday";
+  if (day === 0) return "sunday";
+  return "weekday";
+}
+
+const MULTIPLIERS: Record<string, number> = {
+  weekday: 1.0,
+  saturday: 1.25,
+  sunday: 1.5,
+};
+
+function payRate(dateStr: string, base: number): number {
+  const type = awardType(dateStr);
+  return Math.round(base * (MULTIPLIERS[type] ?? 1.0) * 100) / 100;
+}
+
 async function main() {
   const existing = await prisma.user.findFirst();
   if (existing) {
@@ -22,10 +44,7 @@ async function main() {
   }
 
   const user = await prisma.user.create({
-    data: {
-      name: "Alex",
-      email: "alex@demo.local",
-    },
+    data: { name: "Alex", email: "alex@demo.local" },
   });
 
   const employer = await prisma.employer.create({
@@ -40,6 +59,7 @@ async function main() {
     },
   });
 
+  // Legacy shifts
   const shiftData = [
     { date: "2026-06-18", start: "09:00", end: "17:30", break: 30 },
     { date: "2026-06-17", start: "16:00", end: "22:00", break: 0 },
@@ -68,8 +88,60 @@ async function main() {
     });
   }
 
+  // Pay period: Jun 16–29 (partially filled)
+  const base = employer.hourlyRate;
+
+  // Days with actual hours worked (Mon–Fri only, realistic café hours)
+  const filledDays: Record<string, number> = {
+    "2026-06-16": 7.5,  // Mon
+    "2026-06-17": 6.0,  // Tue
+    "2026-06-18": 8.0,  // Wed
+    "2026-06-19": 7.5,  // Thu
+    "2026-06-20": 7.0,  // Fri (today)
+    // Jun 21 Sat — off
+    // Jun 22 Sun — off
+    "2026-06-23": 7.5,  // Mon
+    "2026-06-24": 6.5,  // Tue
+    // rest blank (future)
+  };
+
+  const period = await prisma.payPeriod.create({
+    data: {
+      userId: user.id,
+      startDate: "2026-06-16",
+      endDate: "2026-06-29",
+      status: "active",
+    },
+  });
+
+  // Generate all 14 days
+  const start = new Date(2026, 5, 16); // Jun 16 2026
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const dateStr = `${y}-${m}-${day}`;
+    const type = awardType(dateStr);
+    const rate = payRate(dateStr, base);
+    const hours = filledDays[dateStr] ?? 0;
+
+    await prisma.payPeriodDay.create({
+      data: {
+        payPeriodId: period.id,
+        date: dateStr,
+        workHours: hours,
+        payAwardType: type,
+        payRate: rate,
+        notes: null,
+      },
+    });
+  }
+
   console.log(
-    `✓ Seeded: user "${user.name}", employer "${employer.name}", ${shiftData.length} shifts.`
+    `✓ Seeded: user "${user.name}", employer "${employer.name}", ` +
+    `${shiftData.length} legacy shifts, 1 pay period (Jun 16–29) with 14 days.`
   );
 }
 

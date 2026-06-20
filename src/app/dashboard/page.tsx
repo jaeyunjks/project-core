@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { FeatureCard } from "@/components/features/FeatureCard";
 import { modules } from "@/data/mockData";
-import { getDemoUser, getHoursBoardSummary } from "@/lib/hoursboard";
+import { getDemoUser, getDashboardHoursPreview } from "@/lib/hoursboard";
 import { formatCurrency, getGreeting, formatDayline } from "@/lib/utils";
 
 export const metadata = { title: "Dashboard — Project Core" };
 
 export default async function DashboardPage() {
   const user = await getDemoUser();
-  const summary = await getHoursBoardSummary(user.id);
+  const preview = await getDashboardHoursPreview(user.id);
 
   const activeModule = modules.find((m) => m.status === "active")!;
   const comingModules = modules.filter((m) => m.status === "coming-soon");
@@ -35,29 +35,39 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* HoursBoard pay period preview — real data */}
-      <Link href="/dashboard/hoursboard">
+      {/* HoursBoard pay period preview */}
+      <Link href={preview ? `/dashboard/hoursboard?period=${preview.periodId}` : "/dashboard/hoursboard"}>
         <div className="bg-white border border-[#e7e1d5] rounded-[18px] p-4 shadow-[0_2px_12px_rgba(41,38,33,0.05)] mb-6 hover:shadow-[0_4px_18px_rgba(41,38,33,0.08)] transition-shadow">
-          <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.1em] text-ghost mb-1">
-            Current pay period · {summary.periodLabel}
-          </div>
-          <div className="flex items-end gap-2 mb-3">
-            <span className="text-[40px] font-semibold font-mono tracking-tight leading-none text-ink">
-              {summary.totalHours % 1 === 0
-                ? summary.totalHours.toFixed(0)
-                : summary.totalHours.toFixed(1)}
-            </span>
-            <span className="text-[17px] font-medium text-subtle pb-1">hrs</span>
-          </div>
-          <div className="flex gap-4 text-[13px]">
-            <span className="font-semibold font-mono text-sage">
-              {formatCurrency(summary.totalGross)}
-            </span>
-            <span className="text-ghost">{summary.totalShifts} shifts</span>
-            <span className="text-amber font-medium">
-              Payday {summary.nextPayday}
-            </span>
-          </div>
+          {preview ? (
+            <>
+              <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.1em] text-ghost mb-1">
+                Pay period · {preview.periodLabel}
+              </div>
+              <div className="flex items-end gap-2 mb-3">
+                <span className="text-[40px] font-semibold font-mono tracking-tight leading-none text-ink">
+                  {preview.totalHours % 1 === 0
+                    ? preview.totalHours.toFixed(0)
+                    : preview.totalHours.toFixed(1)}
+                </span>
+                <span className="text-[17px] font-medium text-subtle pb-1">hrs</span>
+              </div>
+              <div className="flex gap-4 text-[13px]">
+                <span className="font-semibold font-mono text-sage">
+                  {formatCurrency(preview.estimatedGross)}
+                </span>
+                <span className="text-ghost">{preview.workedDays} days worked</span>
+                <span className="text-amber font-medium">
+                  Payday {preview.nextPayday}
+                  {preview.nextPaydayDaysAway > 0 && ` · ${preview.nextPaydayDaysAway}d`}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="py-2 text-center">
+              <div className="text-[13px] font-semibold text-ink mb-0.5">Start tracking hours</div>
+              <div className="text-[12px] text-subtle">Open HoursBoard to create your first pay period.</div>
+            </div>
+          )}
         </div>
       </Link>
 

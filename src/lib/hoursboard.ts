@@ -1,4 +1,4 @@
-import type { Employer, Shift, User } from "@prisma/client";
+import type { Employer, Prisma, Shift, User } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   parseLocalDate,
@@ -7,17 +7,51 @@ import {
   daysBetween,
   getDayLabel,
   getDayNumber,
-  formatPeriodLabel,
+  getMonthLabel,
+  formatPeriodLabelWithYear,
   formatShortDate,
+  todayStr,
 } from "@/lib/utils";
-import type { ShiftDisplay, HoursBoardSummary } from "@/types";
+import type {
+  ShiftDisplay,
+  PayPeriodDayDisplay,
+  PayPeriodDisplay,
+  PayPeriodSummary,
+  DashboardHoursPreview,
+} from "@/types";
+
+// ── Award type config ─────────────────────────────────────────────────────────
+
+export const AWARD_MULTIPLIERS: Record<string, number> = {
+  weekday: 1.0,
+  saturday: 1.25,
+  sunday: 1.5,
+  public_holiday: 2.0,
+  custom: 1.0,
+};
+
+export const AWARD_LABELS: Record<string, string> = {
+  weekday: "Weekday",
+  saturday: "Saturday",
+  sunday: "Sunday",
+  public_holiday: "Public Hol.",
+  custom: "Custom",
+};
+
+function getDefaultAwardType(dateStr: string): string {
+  const day = parseLocalDate(dateStr).getDay();
+  if (day === 6) return "saturday";
+  if (day === 0) return "sunday";
+  return "weekday";
+}
+
+export function getDefaultPayRate(awardType: string, baseRate: number): number {
+  return Math.round(baseRate * (AWARD_MULTIPLIERS[awardType] ?? 1.0) * 100) / 100;
+}
 
 // ── Pure calculations ─────────────────────────────────────────────────────────
 
-/**
- * Calculates decimal hours worked.
- * Handles overnight shifts (end < start).
- */
+/** Decimal hours from HH:MM times minus break. Handles overnight. */
 export function calculateShiftHours(
   startTime: string,
   endTime: string,
@@ -33,49 +67,34 @@ export function calculateShiftHours(
   return Math.round((Math.max(0, workedMins) / 60) * 100) / 100;
 }
 
-/** Rounds to 2 decimal places */
 export function calculateEstimatedPay(hours: number, rate: number): number {
   return Math.round(hours * rate * 100) / 100;
 }
 
-/**
- * Returns the start and end date strings for the pay period that contains today.
- *
- * - fortnightly: 14-day windows anchored at payPeriodStartDate
- * - weekly:       7-day windows anchored at payPeriodStartDate
- * - monthly:      calendar-month windows starting on the same day-of-month
- *                 TODO: handle months shorter than startDay gracefully
- */
-export function getCurrentPeriodRange(
-  payPeriodStartDate: string,
-  payCycle: string,
-  today: Date = new Date()
-): { start: string; end: string } {
-  const ref = parseLocalDate(payPeriodStartDate);
-
-  if (payCycle === "weekly") {
-    const diff = daysBetween(ref, today);
-    const idx = Math.max(0, Math.floor(diff / 7));
-    const start = addDays(ref, idx * 7);
-    return { start: formatDateStr(start), end: formatDateStr(addDays(start, 6)) };
-  }
-
-  if (payCycle === "fortnightly") {
-    const diff = daysBetween(ref, today);
-    const idx = Math.max(0, Math.floor(diff / 14));
-    const start = addDays(ref, idx * 14);
-    return { start: formatDateStr(start), end: formatDateStr(addDays(start, 13)) };
-  }
-
-  // monthly — TODO: edge cases for months shorter than start day
-  const startDay = ref.getDate();
-  const candidate = new Date(today.getFullYear(), today.getMonth(), startDay);
-  const start = candidate > today ? new Date(today.getFullYear(), today.getMonth() - 1, startDay) : candidate;
-  const end = new Date(start.getFullYear(), start.getMonth() + 1, startDay - 1);
-  return { start: formatDateStr(start), end: formatDateStr(end) };
+/** Pure summary from a list of displayed days */
+export function calculatePayPeriodSummary(
+  days: PayPeriodDayDisplay[]
+): PayPeriodSummary {
+  const workedDaysList = days.filter((d) => d.workHours > 0);
+  const totalHours = days.reduce((s, d) => s + d.workHours, 0);
+  const estimatedGross = days.reduce((s, d) => s + d.estimatedPay, 0);
+  return {
+    totalHours: Math.round(totalHours * 100) / 100,
+    estimatedGross: Math.round(estimatedGross * 100) / 100,
+    workedDays: workedDaysList.length,
+    avgHoursPerWorkedDay:
+      workedDaysList.length > 0
+        ? Math.round((totalHours / workedDaysList.length) * 100) / 100
+        : 0,
+  };
 }
 
-/** Adds paydayOffsetDays to the period end date and returns a short label */
+/** Days from today until a YYYY-MM-DD date */
+export function daysUntil(dateStr: string): number {
+  return daysBetween(new Date(), parseLocalDate(dateStr));
+}
+
+/** Short "Jul 3" payday label */
 export function calculateNextPayday(
   periodEndDate: string,
   paydayOffsetDays: number
@@ -85,12 +104,228 @@ export function calculateNextPayday(
   );
 }
 
-/** Days from today until a given YYYY-MM-DD date */
-export function daysUntil(dateStr: string): number {
-  return daysBetween(new Date(), parseLocalDate(dateStr));
+// ── Type helpers ──────────────────────────────────────────────────────────────
+
+type PayPeriodWithDays = Prisma.PayPeriodGetPayload<{
+  include: { days: { orderBy: { date: "asc" } } };
+}>;
+
+function toDayDisplay(
+  day: PayPeriodWithDays["days"][number],
+  today: string
+): PayPeriodDayDisplay {
+  const date = parseLocalDate(day.date);
+  const dow = date.getDay();
+  const estimatedPay = Math.round(day.workHours * day.payRate * 100) / 100;
+  return {
+    id: day.id,
+    date: day.date,
+    dayLabel: getDayLabel(day.date),
+    dayNumber: getDayNumber(day.date),
+    monthLabel: getMonthLabel(day.date),
+    isWeekend: dow === 0 || dow === 6,
+    isToday: day.date === today,
+    workHours: day.workHours,
+    payAwardType: day.payAwardType,
+    payRate: day.payRate,
+    notes: day.notes,
+    estimatedPay,
+  };
 }
 
-// ── DTO mapper ────────────────────────────────────────────────────────────────
+function toPayPeriodDisplay(
+  p: PayPeriodWithDays,
+  today: string
+): PayPeriodDisplay {
+  const days = p.days.map((d) => toDayDisplay(d, today));
+  return {
+    id: p.id,
+    startDate: p.startDate,
+    endDate: p.endDate,
+    label: formatPeriodLabelWithYear(p.startDate, p.endDate),
+    status: p.status,
+    days,
+    summary: calculatePayPeriodSummary(days),
+  };
+}
+
+function generatePeriodDays(
+  startDate: string,
+  endDate: string,
+  baseRate: number
+) {
+  const days = [];
+  let current = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
+  while (current <= end) {
+    const dateStr = formatDateStr(current);
+    const awardType = getDefaultAwardType(dateStr);
+    days.push({
+      date: dateStr,
+      workHours: 0,
+      payAwardType: awardType,
+      payRate: getDefaultPayRate(awardType, baseRate),
+      notes: null,
+    });
+    current = addDays(current, 1);
+  }
+  return days;
+}
+
+// ── DB: User / Employer ───────────────────────────────────────────────────────
+
+export async function getDemoUser(): Promise<User> {
+  const user = await db.user.findFirst();
+  if (!user) throw new Error("No demo user found. Run: npm run db:seed");
+  return user;
+}
+
+export async function getDemoEmployer(): Promise<Employer> {
+  const employer = await db.employer.findFirst();
+  if (!employer) throw new Error("No employer found. Run: npm run db:seed");
+  return employer;
+}
+
+export async function updateEmployer(
+  id: string,
+  data: Partial<
+    Pick<
+      Employer,
+      | "name"
+      | "hourlyRate"
+      | "payCycle"
+      | "payPeriodStartDate"
+      | "paydayOffsetDays"
+      | "defaultBreakMinutes"
+    >
+  >
+): Promise<Employer> {
+  return db.employer.update({ where: { id }, data });
+}
+
+// ── DB: PayPeriod ─────────────────────────────────────────────────────────────
+
+/** All pay periods for a user, sorted oldest → newest */
+export async function getPayPeriods(userId: string): Promise<PayPeriodDisplay[]> {
+  const periods = await db.payPeriod.findMany({
+    where: { userId },
+    include: { days: { orderBy: { date: "asc" } } },
+    orderBy: { startDate: "asc" },
+  });
+  const today = todayStr();
+  return periods.map((p) => toPayPeriodDisplay(p, today));
+}
+
+/** Most recent pay period (newest startDate) */
+export async function getLatestPayPeriod(
+  userId: string
+): Promise<PayPeriodDisplay | null> {
+  const p = await db.payPeriod.findFirst({
+    where: { userId },
+    include: { days: { orderBy: { date: "asc" } } },
+    orderBy: { startDate: "desc" },
+  });
+  if (!p) return null;
+  return toPayPeriodDisplay(p, todayStr());
+}
+
+/** Pay period by ID */
+export async function getPayPeriodById(
+  id: string
+): Promise<PayPeriodDisplay | null> {
+  const p = await db.payPeriod.findUnique({
+    where: { id },
+    include: { days: { orderBy: { date: "asc" } } },
+  });
+  if (!p) return null;
+  return toPayPeriodDisplay(p, todayStr());
+}
+
+/**
+ * Creates the next 14-day pay period immediately after the latest one.
+ * If no periods exist yet, uses employer.payPeriodStartDate as the start.
+ * Throws if a period with the same startDate already exists.
+ */
+export async function createNextPayPeriod(
+  userId: string
+): Promise<PayPeriodDisplay> {
+  const employer = await getDemoEmployer();
+  const latest = await db.payPeriod.findFirst({
+    where: { userId },
+    orderBy: { startDate: "desc" },
+  });
+
+  const startDate = latest
+    ? formatDateStr(addDays(parseLocalDate(latest.endDate), 1))
+    : employer.payPeriodStartDate;
+  const endDate = formatDateStr(addDays(parseLocalDate(startDate), 13));
+
+  const duplicate = await db.payPeriod.findFirst({
+    where: { userId, startDate },
+  });
+  if (duplicate) {
+    throw new Error("A pay period starting on this date already exists.");
+  }
+
+  const period = await db.payPeriod.create({
+    data: {
+      userId,
+      startDate,
+      endDate,
+      status: "active",
+      days: {
+        create: generatePeriodDays(startDate, endDate, employer.hourlyRate),
+      },
+    },
+    include: { days: { orderBy: { date: "asc" } } },
+  });
+
+  return toPayPeriodDisplay(period, todayStr());
+}
+
+/** Update a single day row in the worksheet */
+export async function updatePayPeriodDay(
+  id: string,
+  data: {
+    workHours: number;
+    payAwardType: string;
+    payRate: number;
+    notes: string | null;
+  }
+): Promise<void> {
+  await db.payPeriodDay.update({ where: { id }, data });
+}
+
+// ── DB: Dashboard preview ─────────────────────────────────────────────────────
+
+/**
+ * Lightweight summary for the dashboard HoursBoard preview card.
+ * Returns null if no pay periods exist yet.
+ */
+export async function getDashboardHoursPreview(
+  userId: string
+): Promise<DashboardHoursPreview | null> {
+  const employer = await getDemoEmployer();
+  const latest = await getLatestPayPeriod(userId);
+  if (!latest) return null;
+
+  const nextPaydayDate = formatDateStr(
+    addDays(parseLocalDate(latest.endDate), employer.paydayOffsetDays)
+  );
+
+  return {
+    periodLabel: latest.label,
+    totalHours: latest.summary.totalHours,
+    estimatedGross: latest.summary.estimatedGross,
+    workedDays: latest.summary.workedDays,
+    nextPayday: calculateNextPayday(latest.endDate, employer.paydayOffsetDays),
+    nextPaydayDaysAway: Math.max(0, daysUntil(nextPaydayDate)),
+    hourlyRate: employer.hourlyRate,
+    periodId: latest.id,
+  };
+}
+
+// ── DB: Legacy Shift model ────────────────────────────────────────────────────
 
 export function toShiftDisplay(shift: Shift): ShiftDisplay {
   return {
@@ -107,20 +342,6 @@ export function toShiftDisplay(shift: Shift): ShiftDisplay {
   };
 }
 
-// ── DB queries ────────────────────────────────────────────────────────────────
-
-export async function getDemoUser(): Promise<User> {
-  const user = await db.user.findFirst();
-  if (!user) throw new Error("No demo user found. Run: npm run db:seed");
-  return user;
-}
-
-export async function getDemoEmployer(): Promise<Employer> {
-  const employer = await db.employer.findFirst();
-  if (!employer) throw new Error("No employer found. Run: npm run db:seed");
-  return employer;
-}
-
 export async function getAllShifts(userId: string): Promise<ShiftDisplay[]> {
   const shifts = await db.shift.findMany({
     where: { userId },
@@ -129,31 +350,8 @@ export async function getAllShifts(userId: string): Promise<ShiftDisplay[]> {
   return shifts.map(toShiftDisplay);
 }
 
-export async function getShiftsInPeriod(
-  userId: string,
-  start: string,
-  end: string
-): Promise<ShiftDisplay[]> {
-  const shifts = await db.shift.findMany({
-    where: {
-      userId,
-      shiftDate: { gte: start, lte: end },
-    },
-    orderBy: [{ shiftDate: "desc" }, { startTime: "desc" }],
-  });
-  return shifts.map(toShiftDisplay);
-}
-
-export async function getRecentShifts(
-  userId: string,
-  limit = 3
-): Promise<ShiftDisplay[]> {
-  const shifts = await db.shift.findMany({
-    where: { userId },
-    orderBy: [{ shiftDate: "desc" }, { startTime: "desc" }],
-    take: limit,
-  });
-  return shifts.map(toShiftDisplay);
+export async function deleteShift(id: string): Promise<void> {
+  await db.shift.delete({ where: { id } });
 }
 
 export async function createShift(data: {
@@ -186,61 +384,4 @@ export async function createShift(data: {
     },
   });
   return toShiftDisplay(shift);
-}
-
-export async function deleteShift(id: string): Promise<void> {
-  await db.shift.delete({ where: { id } });
-}
-
-export async function updateEmployer(
-  id: string,
-  data: Partial<
-    Pick<
-      Employer,
-      | "name"
-      | "hourlyRate"
-      | "payCycle"
-      | "payPeriodStartDate"
-      | "paydayOffsetDays"
-      | "defaultBreakMinutes"
-    >
-  >
-): Promise<Employer> {
-  return db.employer.update({ where: { id }, data });
-}
-
-// ── Aggregated summary ────────────────────────────────────────────────────────
-
-export async function getHoursBoardSummary(
-  userId: string
-): Promise<HoursBoardSummary> {
-  const employer = await getDemoEmployer();
-  const { start, end } = getCurrentPeriodRange(
-    employer.payPeriodStartDate,
-    employer.payCycle
-  );
-  const periodShifts = await getShiftsInPeriod(userId, start, end);
-  const recentShifts = await getRecentShifts(userId, 3);
-
-  const totalHours = periodShifts.reduce((s, sh) => s + sh.totalHours, 0);
-  const totalGross = periodShifts.reduce((s, sh) => s + sh.estimatedPay, 0);
-  const nextPaydayStr = calculateNextPayday(end, employer.paydayOffsetDays);
-  // nextPaydayStr is "Jul 3" — we need the full date to calculate days away
-  const nextPaydayDate = formatDateStr(
-    addDays(parseLocalDate(end), employer.paydayOffsetDays)
-  );
-
-  return {
-    periodLabel: formatPeriodLabel(start, end),
-    periodStart: start,
-    periodEnd: end,
-    totalHours: Math.round(totalHours * 100) / 100,
-    totalGross: Math.round(totalGross * 100) / 100,
-    totalShifts: periodShifts.length,
-    hourlyRate: employer.hourlyRate,
-    nextPayday: nextPaydayStr,
-    nextPaydayDaysAway: Math.max(0, daysUntil(nextPaydayDate)),
-    recentShifts,
-    employer,
-  };
 }

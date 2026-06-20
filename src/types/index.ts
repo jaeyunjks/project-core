@@ -1,35 +1,67 @@
 import type { Employer } from "@prisma/client";
 
-/** Display-ready shift DTO (derived from Prisma Shift + date helpers) */
+// ── Legacy: Shift model (used by /shifts history page) ───────────────────────
+
 export interface ShiftDisplay {
   id: string;
-  shiftDate: string;   // YYYY-MM-DD
-  dayLabel: string;    // "Thu"
-  dayNumber: number;   // 18
-  startTime: string;   // "09:00"
-  endTime: string;     // "17:30"
+  shiftDate: string;
+  dayLabel: string;
+  dayNumber: number;
+  startTime: string;
+  endTime: string;
   breakMinutes: number;
   totalHours: number;
   estimatedPay: number;
   notes: string | null;
 }
 
-/** Aggregated summary for the current pay period */
-export interface HoursBoardSummary {
-  periodLabel: string;       // "16–29 Jun"
-  periodStart: string;       // "2026-06-16"
-  periodEnd: string;         // "2026-06-29"
-  totalHours: number;
-  totalGross: number;
-  totalShifts: number;
-  hourlyRate: number;
-  nextPayday: string;        // "Jul 3"
-  nextPaydayDaysAway: number;
-  recentShifts: ShiftDisplay[];
-  employer: Employer;
+// ── PayPeriod worksheet types ────────────────────────────────────────────────
+
+export interface PayPeriodDayDisplay {
+  id: string;
+  date: string;          // YYYY-MM-DD
+  dayLabel: string;      // "Mon"
+  dayNumber: number;     // 16
+  monthLabel: string;    // "Jun"
+  isWeekend: boolean;
+  isToday: boolean;
+  workHours: number;
+  payAwardType: string;  // "weekday" | "saturday" | "sunday" | "public_holiday" | "custom"
+  payRate: number;       // stored rate — not recalculated on employer rate change
+  notes: string | null;
+  estimatedPay: number;  // workHours × payRate (derived, not stored)
 }
 
-/** Static config for dashboard module cards */
+export interface PayPeriodSummary {
+  totalHours: number;
+  estimatedGross: number;
+  workedDays: number;
+  avgHoursPerWorkedDay: number;
+}
+
+export interface PayPeriodDisplay {
+  id: string;
+  startDate: string;
+  endDate: string;
+  label: string;         // "16–29 Jun 2026"
+  status: string;
+  days: PayPeriodDayDisplay[];
+  summary: PayPeriodSummary;
+}
+
+export interface DashboardHoursPreview {
+  periodLabel: string;
+  totalHours: number;
+  estimatedGross: number;
+  workedDays: number;
+  nextPayday: string;
+  nextPaydayDaysAway: number;
+  hourlyRate: number;
+  periodId: string;
+}
+
+// ── Module launcher config ───────────────────────────────────────────────────
+
 export interface Module {
   id: string;
   name: string;
@@ -38,3 +70,6 @@ export interface Module {
   status: "active" | "coming-soon";
   icon: "clock" | "wallet" | "book" | "target" | "briefcase";
 }
+
+// Re-export Employer so pages don't need to import from @prisma/client directly
+export type { Employer };

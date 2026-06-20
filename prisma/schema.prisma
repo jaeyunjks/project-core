@@ -8,13 +8,14 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  name      String
-  email     String     @unique
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  employers Employer[]
-  shifts    Shift[]
+  id         String      @id @default(cuid())
+  name       String
+  email      String      @unique
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  employers  Employer[]
+  shifts     Shift[]
+  payPeriods PayPeriod[]
 }
 
 model Employer {
@@ -35,13 +36,13 @@ model Employer {
   shifts              Shift[]
 }
 
+// TODO: Shift model kept for legacy /shifts page. Not the primary workflow anymore.
+// The PayPeriod + PayPeriodDay models are the new primary data model.
 model Shift {
   id           String   @id @default(cuid())
   userId       String
   employerId   String
-  // ISO date string (YYYY-MM-DD)
   shiftDate    String
-  // HH:MM strings
   startTime    String
   endTime      String
   breakMinutes Int      @default(0)
@@ -52,4 +53,32 @@ model Shift {
   updatedAt    DateTime @updatedAt
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   employer     Employer @relation(fields: [employerId], references: [id], onDelete: Cascade)
+}
+
+model PayPeriod {
+  id        String         @id @default(cuid())
+  userId    String
+  startDate String         // YYYY-MM-DD
+  endDate   String         // YYYY-MM-DD
+  // "active" | "closed"
+  status    String         @default("active")
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days      PayPeriodDay[]
+}
+
+model PayPeriodDay {
+  id           String    @id @default(cuid())
+  payPeriodId  String
+  date         String    // YYYY-MM-DD
+  workHours    Float     @default(0)
+  // "weekday" | "saturday" | "sunday" | "public_holiday" | "custom"
+  payAwardType String    @default("weekday")
+  // stored rate at time of entry — not recalculated if hourlyRate changes later
+  payRate      Float     @default(0)
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  payPeriod    PayPeriod @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
 }

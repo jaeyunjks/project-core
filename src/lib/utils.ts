@@ -61,6 +61,16 @@ export function getDayNumber(dateStr: string): number {
   return parseLocalDate(dateStr).getDate();
 }
 
+/** "Jun" */
+export function getMonthLabel(dateStr: string): string {
+  return MONTH_LABELS[parseLocalDate(dateStr).getMonth()];
+}
+
+/** Full year number */
+export function getYear(dateStr: string): number {
+  return parseLocalDate(dateStr).getFullYear();
+}
+
 /**
  * Human-readable period label.
  * Same month → "16–29 Jun"
@@ -73,6 +83,11 @@ export function formatPeriodLabel(start: string, end: string): string {
     return `${s.getDate()}–${e.getDate()} ${MONTH_LABELS[s.getMonth()]}`;
   }
   return `${s.getDate()} ${MONTH_LABELS[s.getMonth()]}–${e.getDate()} ${MONTH_LABELS[e.getMonth()]}`;
+}
+
+/** "16–29 Jun 2026" */
+export function formatPeriodLabelWithYear(start: string, end: string): string {
+  return `${formatPeriodLabel(start, end)} ${getYear(start)}`;
 }
 
 /** "Jul 3" */
