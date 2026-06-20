@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(cuid())
+  name      String
+  email     String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  employers Employer[]
+  shifts    Shift[]
+}
+
+model Employer {
+  id                  String   @id @default(cuid())
+  userId              String
+  name                String
+  hourlyRate          Float
+  // "weekly" | "fortnightly" | "monthly"
+  payCycle            String   @default("fortnightly")
+  // ISO date string (YYYY-MM-DD) — reference start of a pay period
+  payPeriodStartDate  String
+  // days after period end when pay arrives (e.g. 4 = paid 4 days after period closes)
+  paydayOffsetDays    Int      @default(4)
+  defaultBreakMinutes Int      @default(30)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shifts              Shift[]
+}
+
+model Shift {
+  id           String   @id @default(cuid())
+  userId       String
+  employerId   String
+  // ISO date string (YYYY-MM-DD)
+  shiftDate    String
+  // HH:MM strings
+  startTime    String
+  endTime      String
+  breakMinutes Int      @default(0)
+  totalHours   Float
+  estimatedPay Float
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employer     Employer @relation(fields: [employerId], references: [id], onDelete: Cascade)
+}
