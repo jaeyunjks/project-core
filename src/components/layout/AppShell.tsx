@@ -4,17 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { logoutAction } from "@/server/actions/auth";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 const HomeIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 11.5 12 5l8 6.5" /><path d="M6 10.5V19h12v-8.5" />
-  </svg>
-);
-const ClockIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 1.8" />
   </svg>
 );
 const UserIcon = () => (
@@ -43,7 +39,6 @@ const SettingsIcon = () => (
 
 const primaryNav = [
   { href: "/dashboard", label: "Home", icon: <HomeIcon /> },
-  { href: "/dashboard/hoursboard", label: "Hours", icon: <ClockIcon /> },
   { href: "/profile", label: "You", icon: <UserIcon /> },
 ];
 
@@ -69,8 +64,8 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-paper flex flex-col md:flex-row">
-      {/* Desktop left rail */}
-      <nav className="hidden md:flex flex-col gap-1 w-[200px] shrink-0 border-r border-border-soft bg-surface px-3 py-6 sticky top-0 h-screen overflow-y-auto">
+      {/* Desktop left rail — hidden */}
+      <nav className="hidden flex-col gap-1 w-[200px] shrink-0 border-r border-border-soft bg-surface px-3 py-6 sticky top-0 h-screen overflow-y-auto">
         <div className="flex items-center gap-2.5 px-3 mb-8">
           <div className="w-8 h-8 rounded-[9px] bg-sage flex items-center justify-center shadow-[0_3px_8px_rgba(62,91,77,0.22)]">
             <div className="w-3 h-3 border-[2px] border-white rounded-[3px]" />
@@ -116,13 +111,26 @@ export function AppShell({ children }: AppShellProps) {
             ))}
           </div>
         )}
+
+        {/* Sign out — pinned to bottom of rail */}
+        <form action={logoutAction} className="mt-auto pt-4">
+          <button
+            type="submit"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[11px] text-[14px] font-medium text-subtle hover:bg-paper hover:text-ink transition-colors"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 17l5-5-5-5M20 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            </svg>
+            Sign out
+          </button>
+        </form>
       </nav>
 
       {/* Page content */}
-      <main className="flex-1 pb-20 md:pb-0">{children}</main>
+      <main className="flex-1 pb-20">{children}</main>
 
-      {/* Mobile bottom nav — 3 primary tabs only */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 h-16 border-t border-border-soft bg-white flex items-center justify-around px-3 z-50">
+      {/* Bottom nav — visible on all sizes now that desktop rail is hidden */}
+      <nav className="fixed bottom-0 inset-x-0 h-16 border-t border-border-soft bg-white flex items-center justify-around px-3 z-50">
         {primaryNav.map((item) => (
           <Link
             key={item.href}
@@ -143,6 +151,19 @@ export function AppShell({ children }: AppShellProps) {
             </span>
           </Link>
         ))}
+
+        {/* Sign out */}
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            className="flex flex-col items-center gap-1 text-pale hover:text-sage transition-colors"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 17l5-5-5-5M20 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            </svg>
+            <span className="text-[10px] font-medium">Sign out</span>
+          </button>
+        </form>
       </nav>
     </div>
   );

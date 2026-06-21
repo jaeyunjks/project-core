@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { getDemoEmployer } from "@/lib/hoursboard";
-import { updateEmployerAction } from "@/app/actions/hoursboard";
+import { getCurrentEmployer } from "@/server/queries/hoursboard";
+import { updateEmployerAction } from "@/server/actions/hoursboard";
 
 export const metadata = { title: "HoursBoard Settings — Project Core" };
 
@@ -11,7 +11,7 @@ const payCycleOptions = [
 ];
 
 export default async function HoursBoardSettingsPage() {
-  const employer = await getDemoEmployer();
+  const employer = await getCurrentEmployer();
 
   return (
     <div className="px-5 py-4 max-w-lg md:px-8 md:py-8">

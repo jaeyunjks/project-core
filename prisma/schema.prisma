@@ -8,14 +8,27 @@ datasource db {
 }
 
 model User {
-  id         String      @id @default(cuid())
-  name       String
-  email      String      @unique
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  employers  Employer[]
-  shifts     Shift[]
-  payPeriods PayPeriod[]
+  id           String      @id @default(cuid())
+  name         String
+  email        String      @unique
+  passwordHash String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  employers    Employer[]
+  shifts       Shift[]
+  payPeriods   PayPeriod[]
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Employer {
@@ -58,6 +71,7 @@ model Shift {
 model PayPeriod {
   id        String         @id @default(cuid())
   userId    String
+  name      String?        // user-supplied label, optional
   startDate String         // YYYY-MM-DD
   endDate   String         // YYYY-MM-DD
   // "active" | "closed"

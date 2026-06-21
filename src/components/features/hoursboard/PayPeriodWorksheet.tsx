@@ -3,9 +3,9 @@
 import { useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { PayPeriodDisplay, PayPeriodDayDisplay, PayPeriodSummary } from "@/types";
-import { AWARD_LABELS, getDefaultPayRate } from "@/lib/hoursboard";
+import { AWARD_LABELS, getDefaultPayRate } from "@/domain/hoursboard";
 import { formatCurrency, formatHours, cn } from "@/lib/utils";
-import { saveWorksheetAction, createNextPayPeriodAction } from "@/app/actions/hoursboard";
+import { saveWorksheetAction, createNextPayPeriodAction } from "@/server/actions/hoursboard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

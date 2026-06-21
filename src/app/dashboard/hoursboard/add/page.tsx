@@ -1,14 +1,14 @@
 import Link from "next/link";
-import { getDemoEmployer } from "@/lib/hoursboard";
+import { getCurrentEmployer } from "@/server/queries/hoursboard";
 import { todayStr } from "@/lib/utils";
-import { addShiftAction } from "@/app/actions/hoursboard";
+import { addShiftAction } from "@/server/actions/hoursboard";
 
 export const metadata = { title: "Add Shift — Project Core" };
 
 const breakOptions = [0, 15, 30, 45, 60];
 
 export default async function AddShiftPage() {
-  const employer = await getDemoEmployer();
+  const employer = await getCurrentEmployer();
   const today = todayStr();
 
   return (

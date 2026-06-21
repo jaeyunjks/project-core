@@ -1,6 +1,6 @@
 "use client";
 
-import { deleteShiftAction } from "@/app/actions/hoursboard";
+import { deleteShiftAction } from "@/server/actions/hoursboard";
 
 export function DeleteShiftButton({ id }: { id: string }) {
   return (

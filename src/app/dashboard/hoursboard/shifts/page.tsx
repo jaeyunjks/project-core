@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { ShiftCard } from "@/components/features/hoursboard/ShiftCard";
-import { getDemoUser, getAllShifts } from "@/lib/hoursboard";
+import { getCurrentUser, getAllShifts } from "@/server/queries/hoursboard";
 import { formatCurrency } from "@/lib/utils";
 import { DeleteShiftButton } from "@/components/features/hoursboard/DeleteShiftButton";
 
 export const metadata = { title: "Shift History — Project Core" };
 
 export default async function ShiftHistoryPage() {
-  const user = await getDemoUser();
+  const user = await getCurrentUser();
   const shifts = await getAllShifts(user.id);
 
   const totalHours = shifts.reduce((s, sh) => s + sh.totalHours, 0);

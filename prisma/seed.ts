@@ -1,6 +1,19 @@
 import { PrismaClient } from "@prisma/client";
+import { randomBytes, scrypt as _scrypt } from "crypto";
+import { promisify } from "util";
 
 const prisma = new PrismaClient();
+const scrypt = promisify(_scrypt) as (
+  pw: string | Buffer,
+  salt: string | Buffer,
+  keylen: number
+) => Promise<Buffer>;
+
+async function hashPassword(plain: string): Promise<string> {
+  const salt = randomBytes(16);
+  const hash = await scrypt(plain, salt, 64);
+  return `${salt.toString("hex")}:${hash.toString("hex")}`;
+}
 
 function calcHours(start: string, end: string, breakMins: number): number {
   const [sh, sm] = start.split(":").map(Number);
@@ -44,7 +57,11 @@ async function main() {
   }
 
   const user = await prisma.user.create({
-    data: { name: "Alex", email: "alex@demo.local" },
+    data: {
+      name: "Alex",
+      email: "alex@demo.local",
+      passwordHash: await hashPassword("demo1234"),
+    },
   });
 
   const employer = await prisma.employer.create({
@@ -140,8 +157,9 @@ async function main() {
   }
 
   console.log(
-    `✓ Seeded: user "${user.name}", employer "${employer.name}", ` +
-    `${shiftData.length} legacy shifts, 1 pay period (Jun 16–29) with 14 days.`
+    `✓ Seeded: user "${user.name}" (${user.email} / demo1234), ` +
+    `employer "${employer.name}", ${shiftData.length} legacy shifts, ` +
+    `1 pay period (Jun 16–29) with 14 days.`
   );
 }
 

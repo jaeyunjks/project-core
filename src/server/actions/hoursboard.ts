@@ -3,14 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  getDemoUser,
-  getDemoEmployer,
+  getCurrentUser,
+  getCurrentEmployer,
   createShift,
   deleteShift,
   updateEmployer,
   updatePayPeriodDay,
   createNextPayPeriod,
-} from "@/lib/hoursboard";
+} from "@/server/queries/hoursboard";
 
 function revalidateAll() {
   revalidatePath("/dashboard");
@@ -19,8 +19,8 @@ function revalidateAll() {
 }
 
 export async function addShiftAction(formData: FormData) {
-  const user = await getDemoUser();
-  const employer = await getDemoEmployer();
+  const user = await getCurrentUser();
+  const employer = await getCurrentEmployer();
 
   const shiftDate = formData.get("shiftDate") as string;
   const startTime = formData.get("startTime") as string;
@@ -82,7 +82,7 @@ export async function saveWorksheetAction(
 
 /** Creates the next pay period, returns its id (client component calls this then router.push) */
 export async function createNextPayPeriodAction(): Promise<{ id: string }> {
-  const user = await getDemoUser();
+  const user = await getCurrentUser();
   const period = await createNextPayPeriod(user.id);
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/hoursboard");
@@ -91,14 +91,14 @@ export async function createNextPayPeriodAction(): Promise<{ id: string }> {
 
 /** Same but used from a form action — redirects server-side */
 export async function createFirstPayPeriodFormAction(): Promise<void> {
-  const user = await getDemoUser();
+  const user = await getCurrentUser();
   const period = await createNextPayPeriod(user.id);
   revalidatePath("/dashboard");
   redirect(`/dashboard/hoursboard?period=${period.id}`);
 }
 
 export async function updateEmployerAction(formData: FormData) {
-  const employer = await getDemoEmployer();
+  const employer = await getCurrentEmployer();
 
   await updateEmployer(employer.id, {
     name: (formData.get("name") as string).trim(),

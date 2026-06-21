@@ -1,13 +1,13 @@
 import Link from "next/link";
 import {
-  getDemoUser,
-  getDemoEmployer,
+  getCurrentUser,
+  getCurrentEmployer,
   getPayPeriods,
   getPayPeriodById,
   getLatestPayPeriod,
-} from "@/lib/hoursboard";
+} from "@/server/queries/hoursboard";
 import { PayPeriodWorksheet } from "@/components/features/hoursboard/PayPeriodWorksheet";
-import { createFirstPayPeriodFormAction } from "@/app/actions/hoursboard";
+import { createFirstPayPeriodFormAction } from "@/server/actions/hoursboard";
 
 export const metadata = { title: "HoursBoard — Project Core" };
 
@@ -18,8 +18,8 @@ interface Props {
 export default async function HoursBoardPage({ searchParams }: Props) {
   const { period: periodId } = await searchParams;
 
-  const user = await getDemoUser();
-  const employer = await getDemoEmployer();
+  const user = await getCurrentUser();
+  const employer = await getCurrentEmployer();
   const allPeriods = await getPayPeriods(user.id);
 
   const period = periodId
