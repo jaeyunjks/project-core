@@ -42,6 +42,7 @@ const MULTIPLIERS: Record<string, number> = {
   weekday: 1.0,
   saturday: 1.25,
   sunday: 1.5,
+  public_holiday: 2.5,
 };
 
 function payRate(dateStr: string, base: number): number {
@@ -149,7 +150,8 @@ async function main() {
         payPeriodId: period.id,
         date: dateStr,
         workHours: hours,
-        payAwardType: type,
+        dayType: type,
+        awardLevelId: null,
         payRate: rate,
         notes: null,
       },

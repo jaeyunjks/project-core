@@ -19,7 +19,7 @@ export default async function DashboardPage() {
     .toUpperCase();
 
   return (
-    <div className="px-5 py-5 max-w-2xl md:max-w-none md:px-8 md:py-8">
+    <div className="px-5 py-5 max-w-2xl mx-auto md:max-w-5xl md:px-8 md:py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>

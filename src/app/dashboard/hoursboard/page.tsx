@@ -4,9 +4,11 @@ import {
   getCurrentEmployer,
   getPayPeriods,
   getPayPeriodById,
+  getAwardLevels,
 } from "@/server/queries/hoursboard";
 import { PayPeriodWorksheet } from "@/components/features/hoursboard/PayPeriodWorksheet";
 import { HoursBoardOverview } from "@/components/features/hoursboard/HoursBoardOverview";
+import { PayPeriodActions } from "@/components/features/hoursboard/PayPeriodActions";
 
 export const metadata = { title: "HoursBoard — Project Core" };
 
@@ -20,6 +22,7 @@ export default async function HoursBoardPage({ searchParams }: Props) {
   const user = await getCurrentUser();
   const employer = await getCurrentEmployer();
   const allPeriods = await getPayPeriods(user.id);
+  const awards = await getAwardLevels(user.id, employer.id);
 
   // Worksheet view — when a specific period is requested
   if (periodId) {
@@ -34,7 +37,7 @@ export default async function HoursBoardPage({ searchParams }: Props) {
     const isLatest = !nextPeriod;
 
     return (
-      <div className="px-5 py-4 max-w-4xl md:px-8 md:py-8">
+      <div className="px-5 py-4 max-w-4xl mx-auto md:px-8 md:py-8">
         {/* Header */}
         <div className="flex items-center justify-between h-11 mb-6">
           <div className="flex items-center gap-3 min-w-0">
@@ -56,16 +59,19 @@ export default async function HoursBoardPage({ searchParams }: Props) {
               )}
             </div>
           </div>
-          <Link
-            href="/dashboard/hoursboard/settings"
-            className="w-[38px] h-[38px] shrink-0 rounded-[11px] border border-border bg-white flex items-center justify-center text-subtle hover:text-ink transition-colors"
-            aria-label="Settings"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </Link>
+          <div className="flex items-center gap-2 shrink-0">
+            {period && <PayPeriodActions period={period} />}
+            <Link
+              href="/dashboard/hoursboard/settings"
+              className="w-[38px] h-[38px] rounded-[11px] border border-border bg-white flex items-center justify-center text-subtle hover:text-ink transition-colors"
+              aria-label="Settings"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </Link>
+          </div>
         </div>
 
         {period === null ? (
@@ -101,7 +107,8 @@ export default async function HoursBoardPage({ searchParams }: Props) {
 
             <PayPeriodWorksheet
               period={period}
-              baseRate={employer.hourlyRate}
+              employerBaseRate={employer.hourlyRate}
+              awards={awards}
               isLatest={isLatest}
             />
           </>
@@ -115,7 +122,7 @@ export default async function HoursBoardPage({ searchParams }: Props) {
   const latest = periodsNewestFirst[0] ?? null;
 
   return (
-    <div className="px-5 py-4 max-w-2xl md:px-8 md:py-8">
+    <div className="px-5 py-4 max-w-2xl mx-auto md:px-8 md:py-8">
       {/* Header */}
       <div className="flex items-center justify-between h-11 mb-6">
         <div>

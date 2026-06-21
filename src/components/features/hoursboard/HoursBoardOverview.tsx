@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { PayPeriodDisplay } from "@/types";
 import { formatCurrency, formatHours, cn } from "@/lib/utils";
 import { NewPayPeriodModal } from "./NewPayPeriodModal";
+import { PayPeriodActions } from "./PayPeriodActions";
 
 interface Props {
   periods: PayPeriodDisplay[];          // newest first
@@ -99,21 +100,23 @@ export function HoursBoardOverview({ periods, latest }: Props) {
           </div>
           <div className="flex flex-col gap-2">
             {periods.map((p) => (
-              <Link
+              <div
                 key={p.id}
-                href={`/dashboard/hoursboard?period=${p.id}`}
-                className="bg-white border border-border-soft rounded-[14px] px-4 py-3 flex items-center justify-between hover:border-sage/40 transition-colors"
+                className="bg-white border border-border-soft rounded-[14px] pl-4 pr-2 py-2 flex items-center gap-3 hover:border-sage/40 transition-colors"
               >
-                <div className="min-w-0">
-                  <div className="text-[14px] font-semibold text-ink truncate">
-                    {p.displayName}
+                <Link
+                  href={`/dashboard/hoursboard?period=${p.id}`}
+                  className="flex-1 min-w-0 flex items-center justify-between py-1.5"
+                >
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-semibold text-ink truncate">
+                      {p.displayName}
+                    </div>
+                    {p.name && (
+                      <div className="text-[11px] text-ghost mt-0.5">{p.label}</div>
+                    )}
                   </div>
-                  {p.name && (
-                    <div className="text-[11px] text-ghost mt-0.5">{p.label}</div>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 shrink-0 ml-3">
-                  <div className="text-right">
+                  <div className="text-right shrink-0 ml-3">
                     <div className="text-[13px] font-semibold font-mono text-ink">
                       {formatHours(p.summary.totalHours)}
                     </div>
@@ -121,11 +124,9 @@ export function HoursBoardOverview({ periods, latest }: Props) {
                       {formatCurrency(p.summary.estimatedGross)}
                     </div>
                   </div>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="text-ghost">
-                    <path d="M9 6l6 6-6 6" />
-                  </svg>
-                </div>
-              </Link>
+                </Link>
+                <PayPeriodActions period={p} />
+              </div>
             ))}
           </div>
         </>

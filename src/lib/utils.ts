@@ -1,4 +1,4 @@
-export function formatCurrency(amount: number, symbol = "£"): string {
+export function formatCurrency(amount: number, symbol = "A$"): string {
   return `${symbol}${amount.toFixed(2)}`;
 }
 

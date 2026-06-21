@@ -14,7 +14,7 @@ export default async function ShiftHistoryPage() {
   const totalPay = shifts.reduce((s, sh) => s + sh.estimatedPay, 0);
 
   return (
-    <div className="px-5 py-4 max-w-2xl md:px-8 md:py-8">
+    <div className="px-5 py-4 max-w-2xl mx-auto md:px-8 md:py-8">
       {/* Top bar */}
       <div className="flex items-center justify-between h-11 mb-6">
         <Link

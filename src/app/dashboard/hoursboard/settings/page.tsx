@@ -1,6 +1,11 @@
 import Link from "next/link";
-import { getCurrentEmployer } from "@/server/queries/hoursboard";
+import {
+  getCurrentEmployer,
+  getCurrentUser,
+  getAwardLevels,
+} from "@/server/queries/hoursboard";
 import { updateEmployerAction } from "@/server/actions/hoursboard";
+import { AwardLevelManager } from "@/components/features/hoursboard/AwardLevelManager";
 
 export const metadata = { title: "HoursBoard Settings — Project Core" };
 
@@ -11,10 +16,12 @@ const payCycleOptions = [
 ];
 
 export default async function HoursBoardSettingsPage() {
+  const user = await getCurrentUser();
   const employer = await getCurrentEmployer();
+  const awards = await getAwardLevels(user.id, employer.id);
 
   return (
-    <div className="px-5 py-4 max-w-lg md:px-8 md:py-8">
+    <div className="px-5 py-4 max-w-lg mx-auto md:px-8 md:py-8">
       {/* Top bar */}
       <div className="flex items-center justify-between h-11 mb-6">
         <Link
@@ -51,8 +58,11 @@ export default async function HoursBoardSettingsPage() {
         {/* Hourly rate */}
         <div>
           <label className="block text-[11px] font-semibold font-mono uppercase tracking-[0.08em] text-faint mb-1.5">
-            Hourly rate (£)
+            Default hourly rate (A$)
           </label>
+          <p className="text-[12px] text-subtle mb-1.5 leading-relaxed">
+            Used when a day has no award level selected.
+          </p>
           <input
             type="number"
             name="hourlyRate"
@@ -138,6 +148,18 @@ export default async function HoursBoardSettingsPage() {
           Save Settings
         </button>
       </form>
+
+      {/* Award Levels */}
+      <div className="mt-10">
+        <div className="text-[11px] font-semibold font-mono uppercase tracking-[0.1em] text-ghost mb-1.5">
+          Award Levels
+        </div>
+        <p className="text-[12px] text-subtle leading-relaxed mb-4">
+          Define each classification level you work under (e.g. P3, P5). Each has its own base
+          rate; penalty rates apply on top (Sat 1.25×, Sun 1.5×, Public Hol. 2.5×).
+        </p>
+        <AwardLevelManager initial={awards} />
+      </div>
     </div>
   );
 }

@@ -18,6 +18,7 @@ model User {
   shifts       Shift[]
   payPeriods   PayPeriod[]
   sessions     Session[]
+  awardLevels  AwardLevel[]
 }
 
 model Session {
@@ -32,21 +33,43 @@ model Session {
 }
 
 model Employer {
-  id                  String   @id @default(cuid())
+  id                  String        @id @default(cuid())
   userId              String
   name                String
+  // Fallback base rate (used when a day has no AwardLevel attached)
   hourlyRate          Float
   // "weekly" | "fortnightly" | "monthly"
-  payCycle            String   @default("fortnightly")
+  payCycle            String        @default("fortnightly")
   // ISO date string (YYYY-MM-DD) — reference start of a pay period
   payPeriodStartDate  String
   // days after period end when pay arrives (e.g. 4 = paid 4 days after period closes)
-  paydayOffsetDays    Int      @default(4)
-  defaultBreakMinutes Int      @default(30)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paydayOffsetDays    Int           @default(4)
+  defaultBreakMinutes Int           @default(30)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   shifts              Shift[]
+  awardLevels         AwardLevel[]
+}
+
+// User-defined classification levels under a workplace award.
+// e.g. "P5 — Pharmacy Assistant Grade 5" with a base hourly rate.
+// One employee can have many; each PayPeriodDay can be tagged with one.
+model AwardLevel {
+  id          String         @id @default(cuid())
+  userId      String
+  employerId  String
+  code        String         // e.g. "P5"
+  description String?        // optional — "Pharmacy Assistant Grade 5"
+  baseRate    Float          // base hourly rate at weekday (100%)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employer    Employer       @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  days        PayPeriodDay[]
+
+  @@unique([employerId, code])
+  @@index([userId])
 }
 
 // TODO: Shift model kept for legacy /shifts page. Not the primary workflow anymore.
@@ -83,16 +106,21 @@ model PayPeriod {
 }
 
 model PayPeriodDay {
-  id           String    @id @default(cuid())
-  payPeriodId  String
-  date         String    // YYYY-MM-DD
-  workHours    Float     @default(0)
-  // "weekday" | "saturday" | "sunday" | "public_holiday" | "custom"
-  payAwardType String    @default("weekday")
-  // stored rate at time of entry — not recalculated if hourlyRate changes later
-  payRate      Float     @default(0)
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  payPeriod    PayPeriod @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  id            String      @id @default(cuid())
+  payPeriodId   String
+  date          String      // YYYY-MM-DD
+  workHours     Float       @default(0)
+  // Penalty-rate category: "weekday" | "saturday" | "sunday" | "public_holiday" | "custom"
+  dayType       String      @default("weekday")
+  // Optional link to an AwardLevel; null falls back to employer.hourlyRate
+  awardLevelId  String?
+  // Stored rate at time of entry — not recalculated if base rate changes later
+  payRate       Float       @default(0)
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  payPeriod     PayPeriod   @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  awardLevel    AwardLevel? @relation(fields: [awardLevelId], references: [id], onDelete: SetNull)
+
+  @@index([awardLevelId])
 }

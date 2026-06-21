@@ -4,17 +4,20 @@
 import { parseLocalDate } from "@/lib/utils";
 import type { PayPeriodDayDisplay, PayPeriodSummary } from "@/types";
 
-// ── Award type config ─────────────────────────────────────────────────────────
+// ── Day type config ───────────────────────────────────────────────────────────
+// "Day type" = penalty-rate category. Multipliers follow common Australian
+// award penalty rates (Hospitality / Retail / General Retail Industry Award
+// baseline). Final rates can still be overridden per-day via "Custom".
 
-export const AWARD_MULTIPLIERS: Record<string, number> = {
-  weekday: 1.0,
-  saturday: 1.25,
-  sunday: 1.5,
-  public_holiday: 2.0,
-  custom: 1.0,
+export const DAY_TYPE_MULTIPLIERS: Record<string, number> = {
+  weekday: 1.0,         // 100% — base rate
+  saturday: 1.25,       // 125%
+  sunday: 1.5,          // 150%
+  public_holiday: 2.5,  // 250%
+  custom: 1.0,          // manual override
 };
 
-export const AWARD_LABELS: Record<string, string> = {
+export const DAY_TYPE_LABELS: Record<string, string> = {
   weekday: "Weekday",
   saturday: "Saturday",
   sunday: "Sunday",
@@ -22,15 +25,16 @@ export const AWARD_LABELS: Record<string, string> = {
   custom: "Custom",
 };
 
-export function getDefaultAwardType(dateStr: string): string {
+export function getDefaultDayType(dateStr: string): string {
   const day = parseLocalDate(dateStr).getDay();
   if (day === 6) return "saturday";
   if (day === 0) return "sunday";
   return "weekday";
 }
 
-export function getDefaultPayRate(awardType: string, baseRate: number): number {
-  return Math.round(baseRate * (AWARD_MULTIPLIERS[awardType] ?? 1.0) * 100) / 100;
+/** Calculate rate from base × day-type multiplier, rounded to cents. */
+export function getDefaultPayRate(dayType: string, baseRate: number): number {
+  return Math.round(baseRate * (DAY_TYPE_MULTIPLIERS[dayType] ?? 1.0) * 100) / 100;
 }
 
 // ── Calculations ──────────────────────────────────────────────────────────────

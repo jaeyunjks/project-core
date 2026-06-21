@@ -12,7 +12,7 @@ export default async function AddShiftPage() {
   const today = todayStr();
 
   return (
-    <div className="px-5 py-4 max-w-lg md:px-8 md:py-8">
+    <div className="px-5 py-4 max-w-lg mx-auto md:px-8 md:py-8">
       {/* Top bar */}
       <div className="flex items-center justify-between h-11 mb-6">
         <Link
@@ -108,7 +108,7 @@ export default async function AddShiftPage() {
 
         {/* Rate reminder */}
         <div className="text-[12px] text-ghost bg-[#faf7f1] border border-border-soft rounded-[12px] px-4 py-3">
-          Hourly rate: <span className="font-semibold font-mono text-sage">£{employer.hourlyRate.toFixed(2)}</span>
+          Hourly rate: <span className="font-semibold font-mono text-sage">A${employer.hourlyRate.toFixed(2)}</span>
           {" · "}{employer.name}
           {" · "}<Link href="/dashboard/hoursboard/settings" className="text-sage underline underline-offset-2">Edit</Link>
         </div>

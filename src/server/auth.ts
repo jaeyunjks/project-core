@@ -2,6 +2,7 @@ import "server-only";
 import { randomBytes, scrypt as _scrypt, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { db } from "@/server/db";
 import type { User } from "@prisma/client";
 
@@ -94,9 +95,20 @@ export async function getCurrentUser(): Promise<User | null> {
   return session.user;
 }
 
-/** Throws if no session — use in protected pages/actions */
+/**
+ * Returns the current user, or redirects when not signed in.
+ * - No cookie at all → /login
+ * - Cookie present but session invalid (orphan/expired) → /api/logout
+ *   (route handler clears the cookie then forwards to /login)
+ *
+ * Server Components can't mutate cookies directly, so the route-handler
+ * detour is required to break out of a stale-cookie loop.
+ */
 export async function requireUser(): Promise<User> {
   const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
-  return user;
+  if (user) return user;
+
+  const cookieStore = await cookies();
+  const hasCookie = !!cookieStore.get(SESSION_COOKIE);
+  redirect(hasCookie ? "/api/logout" : "/login");
 }

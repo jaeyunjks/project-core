@@ -1,4 +1,4 @@
-import type { Employer } from "@prisma/client";
+import type { AwardLevel, Employer } from "@prisma/client";
 
 // ── Legacy: Shift model (used by /shifts history page) ───────────────────────
 
@@ -26,8 +26,10 @@ export interface PayPeriodDayDisplay {
   isWeekend: boolean;
   isToday: boolean;
   workHours: number;
-  payAwardType: string;  // "weekday" | "saturday" | "sunday" | "public_holiday" | "custom"
-  payRate: number;       // stored rate — not recalculated on employer rate change
+  dayType: string;       // "weekday" | "saturday" | "sunday" | "public_holiday" | "custom"
+  awardLevelId: string | null;
+  awardLevelCode: string | null;  // denormalised for display
+  payRate: number;       // stored rate — not recalculated on base rate change
   notes: string | null;
   estimatedPay: number;  // workHours × payRate (derived, not stored)
 }
@@ -73,5 +75,12 @@ export interface Module {
   icon: "clock" | "wallet" | "book" | "target" | "briefcase";
 }
 
-// Re-export Employer so pages don't need to import from @prisma/client directly
-export type { Employer };
+export interface AwardLevelDisplay {
+  id: string;
+  code: string;
+  description: string | null;
+  baseRate: number;
+}
+
+// Re-export Prisma types so pages don't need to import from @prisma/client directly
+export type { AwardLevel, Employer };

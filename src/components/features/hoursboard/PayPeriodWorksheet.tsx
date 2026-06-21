@@ -1,8 +1,17 @@
 "use client";
 
 import { useState, useTransition, useCallback } from "react";
-import type { PayPeriodDisplay, PayPeriodDayDisplay, PayPeriodSummary } from "@/types";
-import { AWARD_LABELS, getDefaultPayRate } from "@/domain/hoursboard";
+import type {
+  PayPeriodDisplay,
+  PayPeriodDayDisplay,
+  PayPeriodSummary,
+  AwardLevelDisplay,
+} from "@/types";
+import {
+  DAY_TYPE_LABELS,
+  DAY_TYPE_MULTIPLIERS,
+  getDefaultPayRate,
+} from "@/domain/hoursboard";
 import { formatCurrency, formatHours, cn } from "@/lib/utils";
 import { saveWorksheetAction } from "@/server/actions/hoursboard";
 import { NewPayPeriodModal } from "./NewPayPeriodModal";
@@ -12,7 +21,8 @@ import { NewPayPeriodModal } from "./NewPayPeriodModal";
 interface RowState {
   id: string;
   workHours: number;
-  payAwardType: string;
+  dayType: string;
+  awardLevelId: string | null;
   payRate: number;
   notes: string;
   estimatedPay: number;
@@ -24,11 +34,26 @@ function dayToRow(d: PayPeriodDayDisplay): RowState {
   return {
     id: d.id,
     workHours: d.workHours,
-    payAwardType: d.payAwardType,
+    dayType: d.dayType,
+    awardLevelId: d.awardLevelId,
     payRate: d.payRate,
     notes: d.notes ?? "",
     estimatedPay: d.estimatedPay,
   };
+}
+
+/**
+ * Look up the base hourly rate to use for a row.
+ * If an award is selected: use its baseRate. Otherwise fall back to employer rate.
+ */
+function getBaseRateFor(
+  awardLevelId: string | null,
+  awards: AwardLevelDisplay[],
+  employerBaseRate: number
+): number {
+  if (!awardLevelId) return employerBaseRate;
+  const award = awards.find((a) => a.id === awardLevelId);
+  return award?.baseRate ?? employerBaseRate;
 }
 
 function rowsToSummary(rows: RowState[]): PayPeriodSummary {
@@ -48,7 +73,7 @@ function rowsToSummary(rows: RowState[]): PayPeriodSummary {
 
 // ── Summary bar ───────────────────────────────────────────────────────────────
 
-function SummaryBar({ summary, baseRate }: { summary: PayPeriodSummary; baseRate: number }) {
+function SummaryBar({ summary }: { summary: PayPeriodSummary }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border-soft rounded-[14px] overflow-hidden border border-border-soft">
       {[
@@ -70,9 +95,9 @@ function SummaryBar({ summary, baseRate }: { summary: PayPeriodSummary; baseRate
   );
 }
 
-// ── Award type select ─────────────────────────────────────────────────────────
+// ── Day type select ───────────────────────────────────────────────────────────
 
-function AwardSelect({
+function DayTypeSelect({
   value,
   baseRate,
   onChange,
@@ -91,8 +116,37 @@ function AwardSelect({
       }}
       className="h-8 px-2 rounded-[8px] border border-border bg-white text-[12px] text-ink font-medium appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-sage/30 focus:border-sage"
     >
-      {Object.entries(AWARD_LABELS).map(([k, v]) => (
-        <option key={k} value={k}>{v}</option>
+      {Object.entries(DAY_TYPE_LABELS).map(([k, v]) => (
+        <option key={k} value={k}>
+          {v} ({DAY_TYPE_MULTIPLIERS[k]}×)
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// ── Award level select ────────────────────────────────────────────────────────
+
+function AwardLevelSelect({
+  value,
+  awards,
+  onChange,
+}: {
+  value: string | null;
+  awards: AwardLevelDisplay[];
+  onChange: (awardLevelId: string | null) => void;
+}) {
+  return (
+    <select
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value || null)}
+      className="h-8 px-2 rounded-[8px] border border-border bg-white text-[12px] text-ink font-medium appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-sage/30 focus:border-sage min-w-[68px]"
+    >
+      <option value="">— Default —</option>
+      {awards.map((a) => (
+        <option key={a.id} value={a.id}>
+          {a.code}
+        </option>
       ))}
     </select>
   );
@@ -135,15 +189,18 @@ function HoursInput({
 function DesktopRow({
   day,
   row,
-  baseRate,
+  awards,
+  employerBaseRate,
   onRowChange,
 }: {
   day: PayPeriodDayDisplay;
   row: RowState;
-  baseRate: number;
+  awards: AwardLevelDisplay[];
+  employerBaseRate: number;
   onRowChange: (id: string, patch: Partial<RowState>) => void;
 }) {
   const isWeekend = day.isWeekend;
+  const currentBase = getBaseRateFor(row.awardLevelId, awards, employerBaseRate);
 
   return (
     <tr className={cn("group border-b border-border-soft last:border-0", day.isToday && "bg-sage/[0.04]")}>
@@ -175,14 +232,31 @@ function DesktopRow({
         />
       </td>
 
-      {/* Award type */}
+      {/* Award level */}
       <td className="py-2.5 pr-3">
-        <AwardSelect
-          value={row.payAwardType}
-          baseRate={baseRate}
+        <AwardLevelSelect
+          value={row.awardLevelId}
+          awards={awards}
+          onChange={(awardLevelId) => {
+            const newBase = getBaseRateFor(awardLevelId, awards, employerBaseRate);
+            const newRate =
+              row.dayType === "custom"
+                ? row.payRate
+                : getDefaultPayRate(row.dayType, newBase);
+            const estimatedPay = Math.round(row.workHours * newRate * 100) / 100;
+            onRowChange(row.id, { awardLevelId, payRate: newRate, estimatedPay });
+          }}
+        />
+      </td>
+
+      {/* Day type */}
+      <td className="py-2.5 pr-3">
+        <DayTypeSelect
+          value={row.dayType}
+          baseRate={currentBase}
           onChange={(type, rate) => {
             const estimatedPay = Math.round(row.workHours * rate * 100) / 100;
-            onRowChange(row.id, { payAwardType: type, payRate: rate, estimatedPay });
+            onRowChange(row.id, { dayType: type, payRate: rate, estimatedPay });
           }}
         />
       </td>
@@ -190,7 +264,7 @@ function DesktopRow({
       {/* Rate */}
       <td className="py-2.5 pr-3">
         <div className="flex items-center gap-1">
-          <span className="text-[12px] text-ghost font-mono">£</span>
+          <span className="text-[12px] text-ghost font-mono">A$</span>
           <input
             type="text"
             inputMode="decimal"
@@ -200,7 +274,7 @@ function DesktopRow({
               const rate = parseFloat(e.target.value);
               if (!isNaN(rate) && rate >= 0) {
                 const estimatedPay = Math.round(row.workHours * rate * 100) / 100;
-                onRowChange(row.id, { payRate: rate, payAwardType: "custom", estimatedPay });
+                onRowChange(row.id, { payRate: rate, dayType: "custom", estimatedPay });
               }
             }}
             className="w-[72px] h-8 px-2 rounded-[8px] border border-border bg-white text-[13px] font-mono text-ink text-right focus:outline-none focus:ring-2 focus:ring-sage/30 focus:border-sage placeholder:text-ghost"
@@ -234,14 +308,18 @@ function DesktopRow({
 function MobileCard({
   day,
   row,
-  baseRate,
+  awards,
+  employerBaseRate,
   onRowChange,
 }: {
   day: PayPeriodDayDisplay;
   row: RowState;
-  baseRate: number;
+  awards: AwardLevelDisplay[];
+  employerBaseRate: number;
   onRowChange: (id: string, patch: Partial<RowState>) => void;
 }) {
+  const currentBase = getBaseRateFor(row.awardLevelId, awards, employerBaseRate);
+
   return (
     <div className={cn(
       "bg-white border rounded-[14px] p-4",
@@ -276,16 +354,29 @@ function MobileCard({
           />
           <span className="text-[11px] text-ghost">hrs</span>
         </div>
-        <AwardSelect
-          value={row.payAwardType}
-          baseRate={baseRate}
+        <AwardLevelSelect
+          value={row.awardLevelId}
+          awards={awards}
+          onChange={(awardLevelId) => {
+            const newBase = getBaseRateFor(awardLevelId, awards, employerBaseRate);
+            const newRate =
+              row.dayType === "custom"
+                ? row.payRate
+                : getDefaultPayRate(row.dayType, newBase);
+            const estimatedPay = Math.round(row.workHours * newRate * 100) / 100;
+            onRowChange(row.id, { awardLevelId, payRate: newRate, estimatedPay });
+          }}
+        />
+        <DayTypeSelect
+          value={row.dayType}
+          baseRate={currentBase}
           onChange={(type, rate) => {
             const estimatedPay = Math.round(row.workHours * rate * 100) / 100;
-            onRowChange(row.id, { payAwardType: type, payRate: rate, estimatedPay });
+            onRowChange(row.id, { dayType: type, payRate: rate, estimatedPay });
           }}
         />
         <div className="flex items-center gap-0.5">
-          <span className="text-[11px] text-ghost font-mono">£</span>
+          <span className="text-[11px] text-ghost font-mono">A$</span>
           <input
             type="text"
             inputMode="decimal"
@@ -295,7 +386,7 @@ function MobileCard({
               const rate = parseFloat(e.target.value);
               if (!isNaN(rate) && rate >= 0) {
                 const estimatedPay = Math.round(row.workHours * rate * 100) / 100;
-                onRowChange(row.id, { payRate: rate, payAwardType: "custom", estimatedPay });
+                onRowChange(row.id, { payRate: rate, dayType: "custom", estimatedPay });
               }
             }}
             className="w-[68px] h-8 px-2 rounded-[8px] border border-border bg-white text-[13px] font-mono text-ink text-right focus:outline-none focus:ring-2 focus:ring-sage/30 focus:border-sage placeholder:text-ghost"
@@ -319,11 +410,13 @@ function MobileCard({
 
 interface Props {
   period: PayPeriodDisplay;
-  baseRate: number;
+  /** Employer hourly rate — fallback when a row has no award level */
+  employerBaseRate: number;
+  awards: AwardLevelDisplay[];
   isLatest: boolean;
 }
 
-export function PayPeriodWorksheet({ period, baseRate, isLatest }: Props) {
+export function PayPeriodWorksheet({ period, employerBaseRate, awards, isLatest }: Props) {
   const [rows, setRows] = useState<RowState[]>(() => period.days.map(dayToRow));
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -344,7 +437,8 @@ export function PayPeriodWorksheet({ period, baseRate, isLatest }: Props) {
           rows.map((r) => ({
             id: r.id,
             workHours: r.workHours,
-            payAwardType: r.payAwardType,
+            dayType: r.dayType,
+            awardLevelId: r.awardLevelId,
             payRate: r.payRate,
             notes: r.notes.trim() || null,
           }))
@@ -363,14 +457,14 @@ export function PayPeriodWorksheet({ period, baseRate, isLatest }: Props) {
   return (
     <div className="flex flex-col gap-5">
       {/* Live summary */}
-      <SummaryBar summary={summary} baseRate={baseRate} />
+      <SummaryBar summary={summary} />
 
       {/* Desktop table */}
       <div className="hidden md:block bg-white border border-border-soft rounded-[16px] overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-border-soft">
-              {["Date", "Hours", "Award Type", "Rate", "Est. Pay", "Notes"].map((h) => (
+              {["Date", "Hours", "Award", "Day Type", "Rate", "Est. Pay", "Notes"].map((h) => (
                 <th
                   key={h}
                   className={cn(
@@ -389,7 +483,8 @@ export function PayPeriodWorksheet({ period, baseRate, isLatest }: Props) {
                 key={day.id}
                 day={day}
                 row={rows[i]}
-                baseRate={baseRate}
+                awards={awards}
+                employerBaseRate={employerBaseRate}
                 onRowChange={onRowChange}
               />
             ))}
@@ -404,7 +499,8 @@ export function PayPeriodWorksheet({ period, baseRate, isLatest }: Props) {
             key={day.id}
             day={day}
             row={rows[i]}
-            baseRate={baseRate}
+            awards={awards}
+            employerBaseRate={employerBaseRate}
             onRowChange={onRowChange}
           />
         ))}

@@ -2,7 +2,11 @@
 
 import { useState, useTransition, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createPayPeriodAction } from "@/server/actions/hoursboard";
+import {
+  createPayPeriodAction,
+  updatePayPeriodAction,
+} from "@/server/actions/hoursboard";
+import type { PayPeriodDisplay } from "@/types";
 
 const MIN_DAYS = 7;
 const MAX_DAYS = 14;
@@ -35,28 +39,37 @@ function durationDays(start: string, end: string): number | null {
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** When provided, the modal opens in edit mode for this period. */
+  editPeriod?: PayPeriodDisplay | null;
 }
 
-export function NewPayPeriodModal({ open, onClose }: Props) {
+export function NewPayPeriodModal({ open, onClose, editPeriod }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  const isEditing = !!editPeriod;
   const defaultStart = todayStr();
   const [name, setName] = useState("");
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(addDaysStr(defaultStart, 13));
 
-  // Reset form when modal opens
+  // Reset form when modal opens (use edit values if editing)
   useEffect(() => {
     if (open) {
-      const s = todayStr();
-      setName("");
-      setStartDate(s);
-      setEndDate(addDaysStr(s, 13));
+      if (editPeriod) {
+        setName(editPeriod.name ?? "");
+        setStartDate(editPeriod.startDate);
+        setEndDate(editPeriod.endDate);
+      } else {
+        const s = todayStr();
+        setName("");
+        setStartDate(s);
+        setEndDate(addDaysStr(s, 13));
+      }
       setError(null);
     }
-  }, [open]);
+  }, [open, editPeriod]);
 
   // Close on Escape
   useEffect(() => {
@@ -93,12 +106,19 @@ export function NewPayPeriodModal({ open, onClose }: Props) {
     fd.set("name", name);
     fd.set("startDate", startDate);
     fd.set("endDate", endDate);
+    if (editPeriod) fd.set("id", editPeriod.id);
 
     startTransition(async () => {
-      const result = await createPayPeriodAction(null, fd);
+      const result = editPeriod
+        ? await updatePayPeriodAction(null, fd)
+        : await createPayPeriodAction(null, fd);
       if (result.ok) {
         onClose();
-        router.push(`/dashboard/hoursboard?period=${result.id}`);
+        if (editPeriod) {
+          router.refresh();
+        } else {
+          router.push(`/dashboard/hoursboard?period=${result.id}`);
+        }
       } else {
         setError(result.error);
       }
@@ -123,7 +143,7 @@ export function NewPayPeriodModal({ open, onClose }: Props) {
           {/* Header */}
           <div className="px-5 py-4 border-b border-border-soft flex items-center justify-between">
             <h2 id="new-period-title" className="text-[16px] font-semibold text-ink">
-              New pay period
+              {isEditing ? "Edit pay period" : "New pay period"}
             </h2>
             <button
               type="button"
@@ -193,6 +213,12 @@ export function NewPayPeriodModal({ open, onClose }: Props) {
               )}
             </div>
 
+            {isEditing && editPeriod && (startDate !== editPeriod.startDate || endDate !== editPeriod.endDate) && (
+              <div className="px-3 py-2.5 rounded-[10px] bg-amber-50 border border-amber-200 text-[12px] text-amber-800">
+                Dates changed. Hours entered for days now outside the range will be removed.
+              </div>
+            )}
+
             {(durationError || error) && (
               <div className="px-3 py-2.5 rounded-[10px] bg-red-50 border border-red-200 text-[13px] text-red-700">
                 {error ?? durationError}
@@ -214,7 +240,9 @@ export function NewPayPeriodModal({ open, onClose }: Props) {
               disabled={!canSubmit}
               className="h-10 px-5 rounded-[11px] bg-sage text-white text-[13px] font-semibold shadow-[0_4px_12px_rgba(62,91,77,0.22)] hover:bg-sage/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {isPending ? "Creating…" : "Create pay period"}
+              {isPending
+                ? isEditing ? "Saving…" : "Creating…"
+                : isEditing ? "Save changes" : "Create pay period"}
             </button>
           </div>
         </form>
