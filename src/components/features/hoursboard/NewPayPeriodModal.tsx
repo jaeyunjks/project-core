@@ -41,9 +41,17 @@ interface Props {
   onClose: () => void;
   /** When provided, the modal opens in edit mode for this period. */
   editPeriod?: PayPeriodDisplay | null;
+  /** End date (YYYY-MM-DD) of the most recent existing period. Used to
+   *  enable the "Next week / Next fortnight" quick-fill buttons. */
+  latestPeriodEndDate?: string | null;
 }
 
-export function NewPayPeriodModal({ open, onClose, editPeriod }: Props) {
+export function NewPayPeriodModal({
+  open,
+  onClose,
+  editPeriod,
+  latestPeriodEndDate,
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -173,6 +181,40 @@ export function NewPayPeriodModal({ open, onClose, editPeriod }: Props) {
                 className="w-full h-[46px] rounded-[12px] border border-border bg-white px-3.5 text-[14px] text-ink placeholder:text-pale outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all"
               />
             </div>
+
+            {/* Quick-fill — only when creating + a previous period exists */}
+            {!isEditing && latestPeriodEndDate && (
+              <div>
+                <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.08em] text-faint mb-1.5">
+                  Continue from last period
+                </div>
+                <div className="flex gap-2">
+                  {[
+                    { label: "+1 week", days: 7 },
+                    { label: "+2 weeks", days: 14 },
+                  ].map(({ label, days }) => {
+                    const newStart = addDaysStr(latestPeriodEndDate, 1);
+                    const newEnd = addDaysStr(newStart, days - 1);
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => {
+                          setStartDate(newStart);
+                          setEndDate(newEnd);
+                        }}
+                        className="flex-1 h-9 px-3 rounded-[10px] border border-border bg-white text-[12px] font-semibold text-ink hover:border-sage/40 hover:bg-sage/5 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14M13 6l6 6-6 6" />
+                        </svg>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Dates */}
             <div className="grid grid-cols-2 gap-3">

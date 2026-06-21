@@ -544,7 +544,11 @@ export function PayPeriodWorksheet({ period, employerBaseRate, awards, isLatest 
         </button>
       </div>
 
-      <NewPayPeriodModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <NewPayPeriodModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        latestPeriodEndDate={isLatest ? period.endDate : null}
+      />
     </div>
   );
 }

@@ -132,7 +132,11 @@ export function HoursBoardOverview({ periods, latest }: Props) {
         </>
       )}
 
-      <NewPayPeriodModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <NewPayPeriodModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        latestPeriodEndDate={latest?.endDate ?? null}
+      />
     </>
   );
 }

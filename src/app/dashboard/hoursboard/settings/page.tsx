@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   getCurrentEmployer,
   getCurrentUser,
@@ -6,6 +5,7 @@ import {
 } from "@/server/queries/hoursboard";
 import { updateEmployerAction } from "@/server/actions/hoursboard";
 import { AwardLevelManager } from "@/components/features/hoursboard/AwardLevelManager";
+import { BackButton } from "@/components/ui/BackButton";
 
 export const metadata = { title: "HoursBoard Settings — Project Core" };
 
@@ -24,14 +24,7 @@ export default async function HoursBoardSettingsPage() {
     <div className="px-5 py-4 max-w-lg mx-auto md:px-8 md:py-8">
       {/* Top bar */}
       <div className="flex items-center justify-between h-11 mb-6">
-        <Link
-          href="/dashboard/hoursboard"
-          className="w-[38px] h-[38px] rounded-[11px] border border-border bg-white flex items-center justify-center text-sage"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 6l-6 6 6 6" />
-          </svg>
-        </Link>
+        <BackButton fallback="/dashboard/hoursboard" />
         <span className="text-[17px] font-semibold text-ink">Settings</span>
         <div className="w-[38px]" />
       </div>
