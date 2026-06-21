@@ -9,7 +9,7 @@ import {
   deleteShift,
   updateEmployer,
   updatePayPeriodDay,
-  createNextPayPeriod,
+  createCustomPayPeriod,
 } from "@/server/queries/hoursboard";
 
 function revalidateAll() {
@@ -80,21 +80,45 @@ export async function saveWorksheetAction(
   revalidatePath("/dashboard/hoursboard");
 }
 
-/** Creates the next pay period, returns its id (client component calls this then router.push) */
-export async function createNextPayPeriodAction(): Promise<{ id: string }> {
-  const user = await getCurrentUser();
-  const period = await createNextPayPeriod(user.id);
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/hoursboard");
-  return { id: period.id };
-}
+export type CreatePayPeriodResult =
+  | { ok: true; id: string }
+  | { ok: false; error: string };
 
-/** Same but used from a form action — redirects server-side */
-export async function createFirstPayPeriodFormAction(): Promise<void> {
+/**
+ * Creates a pay period with the supplied name and date range.
+ * Validates 7–14 day duration in the query layer.
+ */
+export async function createPayPeriodAction(
+  _prev: CreatePayPeriodResult | null,
+  formData: FormData
+): Promise<CreatePayPeriodResult> {
   const user = await getCurrentUser();
-  const period = await createNextPayPeriod(user.id);
-  revalidatePath("/dashboard");
-  redirect(`/dashboard/hoursboard?period=${period.id}`);
+
+  const name = ((formData.get("name") as string) ?? "").trim();
+  const startDate = ((formData.get("startDate") as string) ?? "").trim();
+  const endDate = ((formData.get("endDate") as string) ?? "").trim();
+
+  if (!startDate || !endDate) {
+    return { ok: false, error: "Start and end dates are required." };
+  }
+  if (endDate < startDate) {
+    return { ok: false, error: "End date must be on or after start date." };
+  }
+
+  try {
+    const period = await createCustomPayPeriod(user.id, {
+      name: name || null,
+      startDate,
+      endDate,
+    });
+    revalidatePath("/dashboard/hoursboard");
+    return { ok: true, id: period.id };
+  } catch (e: unknown) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Could not create pay period.",
+    };
+  }
 }
 
 export async function updateEmployerAction(formData: FormData) {

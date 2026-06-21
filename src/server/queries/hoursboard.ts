@@ -78,11 +78,14 @@ function toPayPeriodDisplay(
   today: string
 ): PayPeriodDisplay {
   const days = p.days.map((d) => toDayDisplay(d, today));
+  const label = formatPeriodLabelWithYear(p.startDate, p.endDate);
   return {
     id: p.id,
+    name: p.name,
     startDate: p.startDate,
     endDate: p.endDate,
-    label: formatPeriodLabelWithYear(p.startDate, p.endDate),
+    label,
+    displayName: p.name?.trim() || label,
     status: p.status,
     days,
     summary: calculatePayPeriodSummary(days),
@@ -181,19 +184,40 @@ export async function getPayPeriodById(
   return toPayPeriodDisplay(p, todayStr());
 }
 
-export async function createNextPayPeriod(
-  userId: string
+export const MIN_PERIOD_DAYS = 7;
+export const MAX_PERIOD_DAYS = 14;
+
+export interface CreatePayPeriodInput {
+  name: string | null;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+}
+
+/**
+ * Creates a pay period with caller-supplied dates.
+ * Enforces 7–14 day duration inclusive.
+ */
+export async function createCustomPayPeriod(
+  userId: string,
+  input: CreatePayPeriodInput
 ): Promise<PayPeriodDisplay> {
   const employer = await getCurrentEmployer();
-  const latest = await db.payPeriod.findFirst({
-    where: { userId },
-    orderBy: { startDate: "desc" },
-  });
+  const { name, startDate, endDate } = input;
 
-  const startDate = latest
-    ? formatDateStr(addDays(parseLocalDate(latest.endDate), 1))
-    : employer.payPeriodStartDate;
-  const endDate = formatDateStr(addDays(parseLocalDate(startDate), 13));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    throw new Error("Start and end dates must be in YYYY-MM-DD format.");
+  }
+
+  const start = parseLocalDate(startDate);
+  const end = parseLocalDate(endDate);
+  const durationDays = daysBetween(start, end) + 1; // inclusive
+
+  if (durationDays < MIN_PERIOD_DAYS) {
+    throw new Error(`Pay period must be at least ${MIN_PERIOD_DAYS} days.`);
+  }
+  if (durationDays > MAX_PERIOD_DAYS) {
+    throw new Error(`Pay period cannot exceed ${MAX_PERIOD_DAYS} days.`);
+  }
 
   const duplicate = await db.payPeriod.findFirst({
     where: { userId, startDate },
@@ -205,6 +229,7 @@ export async function createNextPayPeriod(
   const period = await db.payPeriod.create({
     data: {
       userId,
+      name: name?.trim() || null,
       startDate,
       endDate,
       status: "active",

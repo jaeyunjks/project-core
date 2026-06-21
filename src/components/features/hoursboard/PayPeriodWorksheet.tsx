@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useTransition, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import type { PayPeriodDisplay, PayPeriodDayDisplay, PayPeriodSummary } from "@/types";
 import { AWARD_LABELS, getDefaultPayRate } from "@/domain/hoursboard";
 import { formatCurrency, formatHours, cn } from "@/lib/utils";
-import { saveWorksheetAction, createNextPayPeriodAction } from "@/server/actions/hoursboard";
+import { saveWorksheetAction } from "@/server/actions/hoursboard";
+import { NewPayPeriodModal } from "./NewPayPeriodModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -320,17 +320,15 @@ function MobileCard({
 interface Props {
   period: PayPeriodDisplay;
   baseRate: number;
-  prevPeriodId: string | null;
-  nextPeriodId: string | null;
   isLatest: boolean;
 }
 
-export function PayPeriodWorksheet({ period, baseRate, prevPeriodId, nextPeriodId, isLatest }: Props) {
-  const router = useRouter();
+export function PayPeriodWorksheet({ period, baseRate, isLatest }: Props) {
   const [rows, setRows] = useState<RowState[]>(() => period.days.map(dayToRow));
   const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isPending, startTransition] = useTransition();
+  const [modalOpen, setModalOpen] = useState(false);
 
   const onRowChange = useCallback((id: string, patch: Partial<RowState>) => {
     setRows((prev) => prev.map((r) => r.id === id ? { ...r, ...patch } : r));
@@ -356,17 +354,6 @@ export function PayPeriodWorksheet({ period, baseRate, prevPeriodId, nextPeriodI
         setTimeout(() => setSaveStatus("idle"), 2500);
       } catch {
         setSaveStatus("error");
-      }
-    });
-  };
-
-  const handleNewPeriod = () => {
-    startTransition(async () => {
-      try {
-        const result = await createNextPayPeriodAction();
-        router.push(`/dashboard/hoursboard?period=${result.id}`);
-      } catch (e: unknown) {
-        alert(e instanceof Error ? e.message : "Could not create pay period.");
       }
     });
   };
@@ -428,7 +415,7 @@ export function PayPeriodWorksheet({ period, baseRate, prevPeriodId, nextPeriodI
         {/* New period */}
         {isLatest && (
           <button
-            onClick={handleNewPeriod}
+            onClick={() => setModalOpen(true)}
             disabled={isPending}
             className="h-10 px-4 rounded-[13px] border border-border bg-white text-[13px] font-semibold text-ink hover:border-sage/40 transition-colors disabled:opacity-40"
           >
@@ -460,6 +447,8 @@ export function PayPeriodWorksheet({ period, baseRate, prevPeriodId, nextPeriodI
           {saveStatus === "saving" ? "Saving…" : "Save Changes"}
         </button>
       </div>
+
+      <NewPayPeriodModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   );
 }

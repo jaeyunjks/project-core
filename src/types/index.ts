@@ -41,9 +41,11 @@ export interface PayPeriodSummary {
 
 export interface PayPeriodDisplay {
   id: string;
+  name: string | null;
   startDate: string;
   endDate: string;
-  label: string;         // "16–29 Jun 2026"
+  label: string;         // "16–29 Jun 2026" — date-range label
+  displayName: string;   // user name if set, else date range
   status: string;
   days: PayPeriodDayDisplay[];
   summary: PayPeriodSummary;
