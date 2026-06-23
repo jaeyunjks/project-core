@@ -121,13 +121,22 @@ export default async function HoursBoardPage({ searchParams }: Props) {
   const periodsNewestFirst = [...allPeriods].reverse();
   const latest = periodsNewestFirst[0] ?? null;
 
+  // Pick the "active" period — one that contains today, else fall back to latest.
+  // This is the target for the floating Log Hours button.
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const activePeriod =
+    periodsNewestFirst.find(
+      (p) => p.startDate <= todayStr && todayStr <= p.endDate
+    ) ?? latest;
+
   return (
-    <div className="px-5 py-4 max-w-2xl mx-auto md:px-8 md:py-8">
+    <div className="px-5 py-4 max-w-2xl mx-auto md:max-w-6xl md:px-8 md:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between h-11 mb-6">
+      <div className="flex items-center justify-between h-11 mb-7">
         <div>
-          <h1 className="text-[18px] font-semibold text-ink leading-tight">HoursBoard</h1>
-          <p className="text-[12px] text-subtle mt-0.5">Track hours across pay periods</p>
+          <h1 className="text-[22px] font-semibold tracking-tight text-ink leading-none md:text-[26px]">HoursBoard</h1>
+          <p className="text-[12px] text-subtle mt-1.5 md:text-[13px]">Track hours across pay periods</p>
         </div>
         <Link
           href="/dashboard/hoursboard/settings"
@@ -141,7 +150,11 @@ export default async function HoursBoardPage({ searchParams }: Props) {
         </Link>
       </div>
 
-      <HoursBoardOverview periods={periodsNewestFirst} latest={latest} />
+      <HoursBoardOverview
+        periods={periodsNewestFirst}
+        latest={latest}
+        activePeriodId={activePeriod?.id ?? null}
+      />
     </div>
   );
 }
