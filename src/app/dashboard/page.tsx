@@ -8,7 +8,7 @@ export const metadata = { title: "Dashboard — Project Core" };
 export default async function DashboardPage() {
   const user = await getCurrentUser();
 
-  const activeModule = modules.find((m) => m.status === "active")!;
+  const activeModules = modules.filter((m) => m.status === "active");
   const comingModules = modules.filter((m) => m.status === "coming-soon");
 
   const initials = user.name
@@ -38,7 +38,11 @@ export default async function DashboardPage() {
         Your apps
       </div>
 
-      <FeatureCard module={activeModule} featured />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        {activeModules.map((m) => (
+          <FeatureCard key={m.id} module={m} featured />
+        ))}
+      </div>
 
       <div className="text-[11px] font-semibold font-mono uppercase tracking-[0.1em] text-ghost mt-5 mb-3">
         Coming soon

@@ -82,5 +82,71 @@ export interface AwardLevelDisplay {
   baseRate: number;
 }
 
+// ── MoneyBoard ───────────────────────────────────────────────────────────────
+
+export interface MoneyCategoryDisplay {
+  id: string;
+  key: string;
+  label: string;
+  kind: "income" | "expense";
+  color: string;
+  icon: string;
+  sortOrder: number;
+}
+
+export interface MoneyEntryDisplay {
+  id: string;
+  kind: "income" | "expense";
+  amount: number;            // positive
+  date: string;              // YYYY-MM-DD
+  note: string | null;
+  source: "manual" | "hoursboard";
+  payPeriodId: string | null;
+  category: MoneyCategoryDisplay;
+}
+
+/** A date with its grouped entries — for the recent-entries list. */
+export interface MoneyEntryGroup {
+  date: string;              // YYYY-MM-DD
+  entries: MoneyEntryDisplay[];
+}
+
+export interface CategoryBreakdownRow {
+  categoryId: string;
+  key: string;
+  label: string;
+  color: string;
+  total: number;
+  percent: number;           // 0..100
+}
+
+export interface MonthlyMoneySummary {
+  monthKey: string;          // "2026-06"
+  monthLabel: string;        // "June 2026"
+  monthRange: string;        // "1–30 Jun"
+  totalIncome: number;
+  totalExpenses: number;
+  net: number;
+  incomeCount: number;
+  expenseCount: number;
+  totalCount: number;
+  savingsRate: number | null; // 0..100 — null when no income
+  breakdown: CategoryBreakdownRow[]; // expenses only, descending
+  groups: MoneyEntryGroup[];         // newest date first
+}
+
+export interface MonthNavOption {
+  monthKey: string;
+  label: string;             // "May 2026"
+  net: number;
+}
+
+export interface LifetimeMoneyStats {
+  months: number;            // distinct months with at least one entry
+  totalIncome: number;
+  totalExpenses: number;
+  net: number;
+}
+
 // Re-export Prisma types so pages don't need to import from @prisma/client directly
 export type { AwardLevel, Employer };

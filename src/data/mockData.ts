@@ -11,11 +11,11 @@ export const modules: Module[] = [
     icon: "clock",
   },
   {
-    id: "budget",
-    name: "Budget Tracker",
-    description: "Track spending across categories.",
-    href: "#",
-    status: "coming-soon",
+    id: "moneyboard",
+    name: "MoneyBoard",
+    description: "Track income, expenses & net balance.",
+    href: "/dashboard/moneyboard",
+    status: "active",
     icon: "wallet",
   },
   {

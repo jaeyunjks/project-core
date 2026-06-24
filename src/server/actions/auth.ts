@@ -38,7 +38,9 @@ export async function signupAction(
 
   const passwordHash = await hashPassword(password);
 
-  // Create user + a starter employer so the dashboard works on first login
+  // Create user + a starter employer + default money categories so both
+  // HoursBoard and MoneyBoard work on first login.
+  const { DEFAULT_CATEGORIES } = await import("@/domain/moneyboard");
   const user = await db.user.create({
     data: {
       name,
@@ -53,6 +55,16 @@ export async function signupAction(
           paydayOffsetDays: 4,
           defaultBreakMinutes: 30,
         },
+      },
+      moneyCategories: {
+        create: DEFAULT_CATEGORIES.map((c) => ({
+          key: c.key,
+          label: c.label,
+          kind: c.kind,
+          color: c.color,
+          icon: c.icon,
+          sortOrder: c.sortOrder,
+        })),
       },
     },
   });

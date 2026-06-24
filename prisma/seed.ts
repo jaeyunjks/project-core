@@ -158,10 +158,71 @@ async function main() {
     });
   }
 
+  // ── MoneyBoard ────────────────────────────────────────────────────────────
+  // Categories (mirrors src/domain/moneyboard.ts — kept inline so seed has
+  // no app-import dependencies).
+  const categories = [
+    { key: "work", label: "Work", kind: "income", color: "#2D4A2E", icon: "briefcase", sortOrder: 0 },
+    { key: "freelance", label: "Freelance", kind: "income", color: "#2D4A2E", icon: "chat", sortOrder: 1 },
+    { key: "income_other", label: "Other", kind: "income", color: "#8F8772", icon: "dots", sortOrder: 2 },
+    { key: "rent", label: "Rent", kind: "expense", color: "#2D4A2E", icon: "home", sortOrder: 0 },
+    { key: "food", label: "Food", kind: "expense", color: "#5A6A3A", icon: "utensils", sortOrder: 1 },
+    { key: "utilities", label: "Utilities", kind: "expense", color: "#B59A6F", icon: "bolt", sortOrder: 2 },
+    { key: "entertainment", label: "Entertainment", kind: "expense", color: "#4F6B5E", icon: "play", sortOrder: 3 },
+    { key: "transport", label: "Transport", kind: "expense", color: "#8A6A3F", icon: "circle-plus", sortOrder: 4 },
+    { key: "expense_other", label: "Other", kind: "expense", color: "#8F8772", icon: "dots", sortOrder: 5 },
+  ];
+  for (const c of categories) {
+    await prisma.moneyCategory.create({ data: { ...c, userId: user.id } });
+  }
+  const catByKey = new Map<string, string>();
+  const dbCats = await prisma.moneyCategory.findMany({ where: { userId: user.id } });
+  for (const c of dbCats) catByKey.set(c.key, c.id);
+
+  // Demo entries — June 2026 (matches design's hero numbers approximately)
+  const moneyEntries = [
+    // Money in (4 entries)
+    { date: "2026-06-15", kind: "income", amount: 320.00, categoryKey: "freelance", note: "Logo redesign" },
+    { date: "2026-06-08", kind: "income", amount: 1551.50, categoryKey: "work", note: "Pay period 25 May–7 Jun" },
+    { date: "2026-06-21", kind: "income", amount: 58.00, categoryKey: "work", note: "Pay period 22 Jun–5 Jul" },
+    { date: "2026-06-02", kind: "income", amount: 50.00, categoryKey: "income_other", note: "Birthday $$" },
+    // Money out (matches breakdown: Rent 420, Food 173.90, Utilities 45, Ent 39, Other 22, Transport 17.60)
+    { date: "2026-06-12", kind: "expense", amount: 420.00, categoryKey: "rent", note: "Half month" },
+    { date: "2026-06-22", kind: "expense", amount: 14.50, categoryKey: "food", note: "Lunch — uni" },
+    { date: "2026-06-20", kind: "expense", amount: 32.80, categoryKey: "food", note: "Groceries — Coles" },
+    { date: "2026-06-18", kind: "expense", amount: 11.20, categoryKey: "food", note: "Coffee + pastry" },
+    { date: "2026-06-14", kind: "expense", amount: 64.20, categoryKey: "food", note: "Dinner with friends" },
+    { date: "2026-06-08", kind: "expense", amount: 28.00, categoryKey: "food", note: "Groceries" },
+    { date: "2026-06-03", kind: "expense", amount: 23.20, categoryKey: "food", note: "Takeaway" },
+    { date: "2026-06-09", kind: "expense", amount: 45.00, categoryKey: "utilities", note: "Internet" },
+    { date: "2026-06-19", kind: "expense", amount: 24.00, categoryKey: "entertainment", note: "Movie ticket" },
+    { date: "2026-06-13", kind: "expense", amount: 15.00, categoryKey: "entertainment", note: "Spotify" },
+    { date: "2026-06-05", kind: "expense", amount: 12.00, categoryKey: "expense_other", note: "Misc" },
+    { date: "2026-06-11", kind: "expense", amount: 10.00, categoryKey: "expense_other", note: "Misc" },
+    { date: "2026-06-21", kind: "expense", amount: 4.40, categoryKey: "transport", note: "Tram" },
+    { date: "2026-06-17", kind: "expense", amount: 4.40, categoryKey: "transport", note: "Tram" },
+    { date: "2026-06-10", kind: "expense", amount: 4.40, categoryKey: "transport", note: "Tram" },
+    { date: "2026-06-04", kind: "expense", amount: 4.40, categoryKey: "transport", note: "Tram" },
+  ];
+  for (const e of moneyEntries) {
+    await prisma.moneyEntry.create({
+      data: {
+        userId: user.id,
+        kind: e.kind,
+        amount: e.amount,
+        date: e.date,
+        categoryId: catByKey.get(e.categoryKey)!,
+        note: e.note,
+        source: "manual",
+      },
+    });
+  }
+
   console.log(
     `✓ Seeded: user "${user.name}" (${user.email} / demo1234), ` +
     `employer "${employer.name}", ${shiftData.length} legacy shifts, ` +
-    `1 pay period (Jun 16–29) with 14 days.`
+    `1 pay period (Jun 16–29) with 14 days, ` +
+    `${categories.length} money categories, ${moneyEntries.length} demo entries.`
   );
 }
 

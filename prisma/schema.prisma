@@ -19,6 +19,8 @@ model User {
   payPeriods   PayPeriod[]
   sessions     Session[]
   awardLevels  AwardLevel[]
+  moneyCategories MoneyCategory[]
+  moneyEntries    MoneyEntry[]
 }
 
 model Session {
@@ -103,6 +105,7 @@ model PayPeriod {
   updatedAt DateTime       @updatedAt
   user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   days      PayPeriodDay[]
+  moneyEntries MoneyEntry[]
 }
 
 model PayPeriodDay {
@@ -123,4 +126,50 @@ model PayPeriodDay {
   awardLevel    AwardLevel? @relation(fields: [awardLevelId], references: [id], onDelete: SetNull)
 
   @@index([awardLevelId])
+}
+
+// ─── MoneyBoard ────────────────────────────────────────────────────────────────
+
+// Per-user category. Seeded with a default set on signup; user can later
+// extend (not in v1 — categories are managed system-wide for now).
+// Includes both income and expense categories distinguished by `kind`.
+model MoneyCategory {
+  id        String       @id @default(cuid())
+  userId    String
+  key       String       // stable identifier — e.g. "rent", "food", "work"
+  label     String       // display label
+  kind      String       // "income" | "expense"
+  color     String       // hex e.g. "#2D4A2E"
+  icon      String       // icon key matching CategoryIcon component
+  sortOrder Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries   MoneyEntry[]
+
+  @@unique([userId, key])
+  @@index([userId, kind])
+}
+
+model MoneyEntry {
+  id          String        @id @default(cuid())
+  userId      String
+  kind        String        // "income" | "expense"
+  amount      Float         // positive value; sign comes from kind
+  date        String        // YYYY-MM-DD
+  categoryId  String
+  note        String?
+  // "manual" — user typed it; "hoursboard" — imported from a PayPeriod
+  source      String        @default("manual")
+  payPeriodId String?       // set when source == "hoursboard"
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    MoneyCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  payPeriod   PayPeriod?    @relation(fields: [payPeriodId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([userId, kind])
+  @@index([categoryId])
+  @@index([payPeriodId])
 }
