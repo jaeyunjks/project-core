@@ -6,8 +6,11 @@ import {
 import {
   getMonthlyMoneyData,
   getLifetimeMoneyStats,
+  previewHoursBoardImport,
 } from "@/server/queries/moneyboard";
 import { currentMonthKey, shiftMonth, formatMoney } from "@/domain/moneyboard";
+import type { DashboardNotification } from "@/components/dashboard/NotificationsMenu";
+import type { DateContext } from "@/components/dashboard/DateMenu";
 import { modules } from "@/data/mockData";
 import { TopBar } from "@/components/dashboard/TopBar";
 import { HeroPanel } from "@/components/dashboard/HeroPanel";
@@ -111,6 +114,13 @@ function formatLongDate(d: Date): string {
   return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+function offsetForLatest(
+  period: { startDate: string },
+  today: Date
+): number {
+  return daysBetween(parseLocalDate(period.startDate), today);
+}
+
 function periodRangeShort(start: string, end: string): string {
   const s = parseLocalDate(start);
   const e = parseLocalDate(end);
@@ -126,13 +136,14 @@ export default async function DashboardPage() {
   const monthKey = currentMonthKey();
   const prevMonthKey = shiftMonth(monthKey, -1);
 
-  const [employer, latestPeriod, monthData, prevMonthData, lifetime] =
+  const [employer, latestPeriod, monthData, prevMonthData, lifetime, hbImport] =
     await Promise.all([
       getCurrentEmployer(),
       getLatestPayPeriod(user.id),
       getMonthlyMoneyData(user.id, monthKey),
       getMonthlyMoneyData(user.id, prevMonthKey),
       getLifetimeMoneyStats(user.id),
+      previewHoursBoardImport(user.id),
     ]);
 
   // ── Derived stats ─────────────────────────────────────────────────────────
@@ -251,9 +262,95 @@ export default async function DashboardPage() {
     monthData.net,
   ];
 
+  // ── Date context for the TopBar date pill ──────────────────────────────────
+  const now = new Date();
+  const daysInThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const dateContext: DateContext = {
+    longLabel: formatLongDate(now),
+    greeting: getGreeting(),
+    period: latestPeriod
+      ? (() => {
+          const start = parseLocalDate(latestPeriod.startDate);
+          const end = parseLocalDate(latestPeriod.endDate);
+          const total = daysBetween(start, end) + 1;
+          const offset = daysBetween(start, today);
+          const dayOf = Math.max(1, Math.min(total, offset + 1));
+          const remaining = Math.max(0, total - dayOf);
+          return {
+            label: periodRangeShort(latestPeriod.startDate, latestPeriod.endDate),
+            dayOf,
+            totalDays: total,
+            remainingDays: remaining,
+          };
+        })()
+      : null,
+    monthDay: now.getDate(),
+    daysLeftInMonth: daysInThisMonth - now.getDate(),
+  };
+
+  // ── Notifications — derived from real signals ──────────────────────────────
+  const notifications: DashboardNotification[] = [];
+
+  if (latestPeriod) {
+    const start = parseLocalDate(latestPeriod.startDate);
+    const end = parseLocalDate(latestPeriod.endDate);
+    const total = daysBetween(start, end) + 1;
+    const offset = daysBetween(start, today);
+    if (offset >= 0 && offset < total) {
+      const remaining = total - offset - 1;
+      if (remaining <= 3 && remaining > 0) {
+        notifications.push({
+          id: "period-ending",
+          kind: "warn",
+          title: "Pay period ending soon",
+          body: `${remaining} day${remaining === 1 ? "" : "s"} left in ${periodRangeShort(latestPeriod.startDate, latestPeriod.endDate)}.`,
+          href: `/dashboard/hoursboard?period=${latestPeriod.id}`,
+          cta: "Open worksheet",
+        });
+      }
+    }
+  }
+
+  if (hbImport && !hbImport.alreadyImported && hbImport.estimatedGross > 0) {
+    notifications.push({
+      id: "hb-import",
+      kind: "info",
+      title: "Ready to import from HoursBoard",
+      body: `${hbImport.label} · ${formatMoney(hbImport.estimatedGross)} estimated gross.`,
+      href: "/dashboard/moneyboard",
+      cta: "Import to MoneyBoard",
+    });
+  }
+
+  if (netPrev !== 0 && netNow !== 0) {
+    const pct = ((netNow - netPrev) / Math.abs(netPrev)) * 100;
+    if (Math.abs(pct) >= 15) {
+      const dir = pct > 0 ? "up" : "down";
+      notifications.push({
+        id: "net-shift",
+        kind: pct > 0 ? "success" : "warn",
+        title: `Net balance ${dir} ${Math.abs(pct).toFixed(0)}% this month`,
+        body: `${formatMoney(netPrev, { signed: true })} → ${formatMoney(netNow, { signed: true })}`,
+        href: "/dashboard/moneyboard",
+        cta: "Open MoneyBoard",
+      });
+    }
+  }
+
+  if (latestPeriod && latestPeriod.summary.workedDays === 0 && offsetForLatest(latestPeriod, today) >= 2) {
+    notifications.push({
+      id: "no-hours",
+      kind: "warn",
+      title: "No hours logged yet",
+      body: `You haven't entered any hours for ${periodRangeShort(latestPeriod.startDate, latestPeriod.endDate)}.`,
+      href: `/dashboard/hoursboard?period=${latestPeriod.id}`,
+      cta: "Log hours",
+    });
+  }
+
   return (
     <div className="px-5 py-5 md:px-10 md:py-8 max-w-[1280px] mx-auto">
-      <TopBar userName={user.name} dateLabel={formatLongDate(new Date())} />
+      <TopBar dateContext={dateContext} notifications={notifications} />
 
       <HeroPanel
         name={user.name.split(" ")[0]}
