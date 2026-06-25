@@ -51,6 +51,13 @@ function payRate(dateStr: string, base: number): number {
 }
 
 async function main() {
+  // Refuse to seed the demo user in production. Real signups create their
+  // own users + default categories via signupAction.
+  if (process.env.NODE_ENV === "production") {
+    console.log("✗ Skipping demo seed in production.");
+    return;
+  }
+
   const existing = await prisma.user.findFirst();
   if (existing) {
     console.log("✓ Seed data already present — skipping.");
