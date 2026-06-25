@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   getCurrentUser,
   getCategories,
@@ -9,6 +8,7 @@ import {
 } from "@/server/queries/moneyboard";
 import { currentMonthKey } from "@/domain/moneyboard";
 import { MoneyBoardOverview } from "@/components/features/moneyboard/MoneyBoardOverview";
+import { BackButton } from "@/components/ui/BackButton";
 
 export const metadata = { title: "MoneyBoard — Project Core" };
 
@@ -34,22 +34,11 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
 
   return (
     <div className="px-5 py-4 max-w-2xl mx-auto md:max-w-6xl md:px-8 md:py-8">
-      {/* Header — board switcher + title */}
-      <div className="flex items-start justify-between gap-4 mb-7">
+      {/* Header — back button + title */}
+      <div className="flex items-center gap-3 mb-7">
+        <BackButton fallback="/dashboard" ariaLabel="Back to dashboard" />
         <div>
-          {/* Board switcher pill */}
-          <div className="inline-flex items-center gap-1 p-1 bg-[#EFE9DC] border border-border-soft rounded-full mb-4">
-            <Link
-              href="/dashboard/hoursboard"
-              className="px-3.5 py-1.5 rounded-full text-[12px] font-medium text-muted hover:text-ink transition-colors"
-            >
-              HoursBoard
-            </Link>
-            <span className="px-3.5 py-1.5 rounded-full text-[12px] font-medium bg-ink text-paper">
-              MoneyBoard
-            </span>
-          </div>
-          <h1 className="text-[26px] md:text-[32px] font-semibold tracking-tight text-ink leading-none">
+          <h1 className="text-[22px] md:text-[26px] font-semibold tracking-tight text-ink leading-none">
             MoneyBoard
           </h1>
           <p className="text-[12px] md:text-[13px] text-muted mt-1.5">

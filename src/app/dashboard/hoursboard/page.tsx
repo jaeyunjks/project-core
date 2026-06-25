@@ -8,6 +8,7 @@ import {
 } from "@/server/queries/hoursboard";
 import { PayPeriodWorksheet } from "@/components/features/hoursboard/PayPeriodWorksheet";
 import { HoursBoardOverview } from "@/components/features/hoursboard/HoursBoardOverview";
+import { BackButton } from "@/components/ui/BackButton";
 import { PayPeriodActions } from "@/components/features/hoursboard/PayPeriodActions";
 
 export const metadata = { title: "HoursBoard — Project Core" };
@@ -133,10 +134,13 @@ export default async function HoursBoardPage({ searchParams }: Props) {
   return (
     <div className="px-5 py-4 max-w-2xl mx-auto md:max-w-6xl md:px-8 md:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between h-11 mb-7">
-        <div>
-          <h1 className="text-[22px] font-semibold tracking-tight text-ink leading-none md:text-[26px]">HoursBoard</h1>
-          <p className="text-[12px] text-subtle mt-1.5 md:text-[13px]">Track hours across pay periods</p>
+      <div className="flex items-center justify-between mb-7">
+        <div className="flex items-center gap-3">
+          <BackButton fallback="/dashboard" ariaLabel="Back to dashboard" />
+          <div>
+            <h1 className="text-[22px] font-semibold tracking-tight text-ink leading-none md:text-[26px]">HoursBoard</h1>
+            <p className="text-[12px] text-subtle mt-1.5 md:text-[13px]">Track hours across pay periods</p>
+          </div>
         </div>
         <Link
           href="/dashboard/hoursboard/settings"
