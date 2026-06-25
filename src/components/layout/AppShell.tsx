@@ -5,162 +5,84 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/server/actions/auth";
+import { Sidebar } from "@/components/dashboard/Sidebar";
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
+// ── Mobile bottom-nav config ────────────────────────────────────────────────
 
 const HomeIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 11.5 12 5l8 6.5" /><path d="M6 10.5V19h12v-8.5" />
-  </svg>
-);
-const UserIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="9" r="3.2" /><path d="M5.5 19c1-3.2 3.5-4.6 6.5-4.6s5.5 1.4 6.5 4.6" />
+    <path d="M3 9.5 12 3l9 6.5" /><path d="M5 9V20h14V9" />
   </svg>
 );
-const PlusIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <path d="M12 6v12M6 12h12" />
+const ClockIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 1.8" />
   </svg>
 );
-const ListIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+const WalletIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="7" width="18" height="13" rx="2.5" /><circle cx="16" cy="13.5" r="1.6" />
   </svg>
 );
-const SettingsIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+const LogoutIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 17l5-5-5-5M20 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
   </svg>
 );
 
-// ── Nav config ────────────────────────────────────────────────────────────────
-
-const primaryNav = [
+const mobileNav = [
   { href: "/dashboard", label: "Home", icon: <HomeIcon /> },
-  { href: "/profile", label: "You", icon: <UserIcon /> },
+  { href: "/dashboard/hoursboard", label: "Hours", icon: <ClockIcon /> },
+  { href: "/dashboard/moneyboard", label: "Money", icon: <WalletIcon /> },
 ];
 
-const hoursboardSubnav = [
-  { href: "/dashboard/hoursboard/add", label: "Add Shift", icon: <PlusIcon /> },
-  { href: "/dashboard/hoursboard/shifts", label: "History", icon: <ListIcon /> },
-  { href: "/dashboard/hoursboard/settings", label: "Settings", icon: <SettingsIcon /> },
-];
-
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Shell ────────────────────────────────────────────────────────────────────
 
 interface AppShellProps {
   children: ReactNode;
+  user: { name: string; email: string };
 }
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, user }: AppShellProps) {
   const pathname = usePathname();
-
-  const isPrimary = (href: string) =>
+  const isActive = (href: string) =>
     href === "/dashboard" ? pathname === href : pathname.startsWith(href);
-
-  const inHoursBoard = pathname.startsWith("/dashboard/hoursboard");
 
   return (
     <div className="min-h-screen bg-paper flex flex-col md:flex-row">
-      {/* Desktop left rail — hidden */}
-      <nav className="hidden flex-col gap-1 w-[200px] shrink-0 border-r border-border-soft bg-surface px-3 py-6 sticky top-0 h-screen overflow-y-auto">
-        <div className="flex items-center gap-2.5 px-3 mb-8">
-          <div className="w-8 h-8 rounded-[9px] bg-sage flex items-center justify-center shadow-[0_3px_8px_rgba(62,91,77,0.22)]">
-            <div className="w-3 h-3 border-[2px] border-white rounded-[3px]" />
-          </div>
-          <span className="font-semibold text-[15px] text-ink tracking-tight">
-            Project Core
-          </span>
-        </div>
-
-        {primaryNav.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-[11px] text-[14px] font-medium transition-colors",
-              isPrimary(item.href)
-                ? "bg-sage-tint text-sage"
-                : "text-subtle hover:bg-paper hover:text-ink"
-            )}
-          >
-            {item.icon}
-            {item.label}
-          </Link>
-        ))}
-
-        {/* HoursBoard sub-nav — visible when in /dashboard/hoursboard/* */}
-        {inHoursBoard && (
-          <div className="mt-1 ml-3 pl-3 border-l border-border-soft flex flex-col gap-0.5">
-            {hoursboardSubnav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-2.5 px-2 py-2 rounded-[9px] text-[13px] font-medium transition-colors",
-                  pathname === item.href
-                    ? "bg-sage-tint text-sage"
-                    : "text-subtle hover:bg-paper hover:text-ink"
-                )}
-              >
-                {item.icon}
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {/* Sign out — pinned to bottom of rail */}
-        <form action={logoutAction} className="mt-auto pt-4">
-          <button
-            type="submit"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[11px] text-[14px] font-medium text-subtle hover:bg-paper hover:text-ink transition-colors"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 17l5-5-5-5M20 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            </svg>
-            Sign out
-          </button>
-        </form>
-      </nav>
+      {/* Desktop sidebar */}
+      <Sidebar user={user} />
 
       {/* Page content */}
-      <main className="flex-1 pb-20">{children}</main>
+      <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
 
-      {/* Bottom nav — visible on all sizes now that desktop rail is hidden */}
-      <nav className="fixed bottom-0 inset-x-0 h-16 border-t border-border-soft bg-white flex items-center justify-around px-3 z-50">
-        {primaryNav.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "flex flex-col items-center gap-1 transition-colors",
-              isPrimary(item.href) ? "text-sage" : "text-pale"
-            )}
-          >
-            {item.icon}
-            <span
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 h-16 border-t border-border-soft bg-white/95 backdrop-blur-sm flex items-center justify-around px-3 z-50">
+        {mobileNav.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
               className={cn(
-                "text-[10px]",
-                isPrimary(item.href) ? "font-semibold" : "font-medium"
+                "flex flex-col items-center gap-0.5 transition-colors",
+                active ? "text-sage" : "text-pale"
               )}
             >
-              {item.label}
-            </span>
-          </Link>
-        ))}
-
-        {/* Sign out */}
+              {item.icon}
+              <span className={cn("text-[10px]", active ? "font-semibold" : "font-medium")}>
+                {item.label}
+              </span>
+            </Link>
+          );
+        })}
         <form action={logoutAction}>
           <button
             type="submit"
-            className="flex flex-col items-center gap-1 text-pale hover:text-sage transition-colors"
+            aria-label="Sign out"
+            className="flex flex-col items-center gap-0.5 text-pale hover:text-sage transition-colors"
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 17l5-5-5-5M20 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            </svg>
+            <LogoutIcon />
             <span className="text-[10px] font-medium">Sign out</span>
           </button>
         </form>
