@@ -4,7 +4,7 @@ import { getCurrentUser, getAllShifts } from "@/server/queries/hoursboard";
 import { formatCurrency } from "@/lib/utils";
 import { DeleteShiftButton } from "@/components/features/hoursboard/DeleteShiftButton";
 
-export const metadata = { title: "Shift History — Project Core" };
+export const metadata = { title: "Shift History — Coreboard" };
 
 export default async function ShiftHistoryPage() {
   const user = await getCurrentUser();

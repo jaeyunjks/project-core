@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SignupForm } from "./SignupForm";
 
-export const metadata = { title: "Create account — Project Core" };
+export const metadata = { title: "Create account — Coreboard" };
 
 export default function SignupPage() {
   return (

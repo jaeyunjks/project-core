@@ -10,7 +10,7 @@ import { currentMonthKey } from "@/domain/moneyboard";
 import { MoneyBoardOverview } from "@/components/features/moneyboard/MoneyBoardOverview";
 import { BackButton } from "@/components/ui/BackButton";
 
-export const metadata = { title: "MoneyBoard — Project Core" };
+export const metadata = { title: "MoneyBoard — Coreboard" };
 
 interface Props {
   searchParams: Promise<{ month?: string }>;

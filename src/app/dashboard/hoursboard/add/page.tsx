@@ -3,7 +3,7 @@ import { getCurrentEmployer } from "@/server/queries/hoursboard";
 import { todayStr } from "@/lib/utils";
 import { addShiftAction } from "@/server/actions/hoursboard";
 
-export const metadata = { title: "Add Shift — Project Core" };
+export const metadata = { title: "Add Shift — Coreboard" };
 
 const breakOptions = [0, 15, 30, 45, 60];
 

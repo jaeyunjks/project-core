@@ -11,7 +11,7 @@ import { HoursBoardOverview } from "@/components/features/hoursboard/HoursBoardO
 import { BackButton } from "@/components/ui/BackButton";
 import { PayPeriodActions } from "@/components/features/hoursboard/PayPeriodActions";
 
-export const metadata = { title: "HoursBoard — Project Core" };
+export const metadata = { title: "HoursBoard — Coreboard" };
 
 interface Props {
   searchParams: Promise<{ period?: string }>;

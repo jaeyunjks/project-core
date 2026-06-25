@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Project Core",
+  title: "Coreboard",
   description: "Your personal OS — calm, private, organised.",
 };
 

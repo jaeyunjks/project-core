@@ -26,7 +26,7 @@ import {
   todayStr,
 } from "@/lib/utils";
 
-export const metadata = { title: "Dashboard — Project Core" };
+export const metadata = { title: "Dashboard — Coreboard" };
 
 const I = {
   apps: (

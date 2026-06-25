@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/server/actions/auth";
@@ -109,12 +110,19 @@ export function Sidebar({ user }: { user: User }) {
       {/* Brand */}
       <div className="px-5 pt-5 pb-6">
         <Link href="/dashboard" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-[10px] bg-sage flex items-center justify-center shadow-[0_4px_10px_rgba(62,91,77,0.22)] group-hover:scale-[1.04] transition-transform">
-            <div className="w-3 h-3 border-[2px] border-paper rounded-[3px]" />
+          <div className="w-9 h-9 rounded-[10px] overflow-hidden shadow-[0_4px_10px_rgba(62,91,77,0.18)] group-hover:scale-[1.04] transition-transform">
+            <Image
+              src="/coreboard.png"
+              alt="Coreboard"
+              width={72}
+              height={72}
+              priority
+              className="w-full h-full object-cover"
+            />
           </div>
           <div className="flex flex-col leading-none">
-            <span className="text-[14px] font-semibold tracking-tight text-ink">
-              Project Core
+            <span className="text-[15px] font-semibold tracking-tight text-ink">
+              Coreboard
             </span>
             <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-ghost mt-0.5">
               v0.1
@@ -134,7 +142,7 @@ export function Sidebar({ user }: { user: User }) {
           <div className="flex items-center gap-2 mb-1">
             <div className="w-1.5 h-1.5 rounded-full bg-sage" />
             <span className="text-[10px] font-semibold font-mono uppercase tracking-[0.14em] text-sage">
-              Project Core Pro
+              Coreboard Pro
             </span>
           </div>
           <p className="text-[11.5px] text-muted leading-snug mb-2.5">

@@ -7,7 +7,7 @@ import { updateEmployerAction } from "@/server/actions/hoursboard";
 import { AwardLevelManager } from "@/components/features/hoursboard/AwardLevelManager";
 import { BackButton } from "@/components/ui/BackButton";
 
-export const metadata = { title: "HoursBoard Settings — Project Core" };
+export const metadata = { title: "HoursBoard Settings — Coreboard" };
 
 const payCycleOptions = [
   { value: "weekly", label: "Weekly (7 days)" },
