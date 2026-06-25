@@ -137,11 +137,11 @@ export function NewPayPeriodModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-ink/40 backdrop-blur-sm px-4 py-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4 pb-20 md:pb-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[440px] bg-white rounded-t-[20px] md:rounded-[20px] border border-border-soft shadow-[0_20px_60px_rgba(0,0,0,0.18)] overflow-hidden"
+        className="w-full max-w-[440px] max-h-[calc(100dvh-7rem)] md:max-h-[calc(100dvh-3rem)] overflow-y-auto bg-white rounded-[20px] border border-border-soft shadow-[0_20px_60px_rgba(0,0,0,0.18)]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

@@ -196,11 +196,11 @@ export function EntryRow({ entry, categories, position = "single" }: Props) {
       {/* Delete confirm */}
       {confirmDelete && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 backdrop-blur-sm px-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 backdrop-blur-sm px-4 pb-20 md:pb-4"
           onClick={() => !isPending && setConfirmDelete(false)}
         >
           <div
-            className="w-full max-w-[400px] bg-paper border border-border-soft rounded-[14px] shadow-[0_20px_60px_rgba(0,0,0,0.2)] p-5"
+            className="w-full max-w-[400px] max-h-[calc(100dvh-6rem)] overflow-y-auto bg-paper border border-border-soft rounded-[14px] shadow-[0_20px_60px_rgba(0,0,0,0.2)] p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-11 h-11 rounded-[12px] bg-red-50 flex items-center justify-center text-[#8A3F2E] mb-3">

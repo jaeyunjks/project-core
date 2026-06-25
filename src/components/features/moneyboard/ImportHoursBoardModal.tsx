@@ -51,11 +51,11 @@ export function ImportHoursBoardModal({ open, onClose, preview }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-ink/45 backdrop-blur-sm px-4 py-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 backdrop-blur-sm p-4 pb-20 md:pb-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[480px] bg-paper rounded-t-[24px] md:rounded-[16px] border border-border-soft shadow-[0_24px_60px_rgba(0,0,0,0.22)] overflow-hidden"
+        className="w-full max-w-[480px] max-h-[calc(100dvh-7rem)] md:max-h-[calc(100dvh-3rem)] overflow-y-auto bg-paper rounded-[16px] border border-border-soft shadow-[0_24px_60px_rgba(0,0,0,0.22)]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
