@@ -42,7 +42,7 @@ const MULTIPLIERS: Record<string, number> = {
   weekday: 1.0,
   saturday: 1.25,
   sunday: 1.5,
-  public_holiday: 2.5,
+  public_holiday: 2.25,
 };
 
 function payRate(dateStr: string, base: number): number {

@@ -149,7 +149,7 @@ export default async function HoursBoardSettingsPage() {
         </div>
         <p className="text-[12px] text-subtle leading-relaxed mb-4">
           Define each classification level you work under (e.g. P3, P5). Each has its own base
-          rate; penalty rates apply on top (Sat 1.25×, Sun 1.5×, Public Hol. 2.5×).
+          rate; penalty rates apply on top (Sat 1.25×, Sun 1.5×, Public Hol. 2.25×).
         </p>
         <AwardLevelManager initial={awards} />
       </div>

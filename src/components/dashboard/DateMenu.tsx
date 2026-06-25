@@ -21,12 +21,15 @@ export interface DateContext {
 }
 
 interface Props {
-  context: DateContext;
+  context: DateContext | null | undefined;
 }
 
 export function DateMenu({ context }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  // Defensive: TopBar can briefly hot-reload with no context during dev
+  if (!context) return null;
 
   useEffect(() => {
     if (!open) return;

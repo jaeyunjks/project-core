@@ -16,7 +16,7 @@ export interface DashboardNotification {
 }
 
 interface Props {
-  notifications: DashboardNotification[];
+  notifications?: DashboardNotification[];
 }
 
 const KIND_TINT: Record<NotificationKind, string> = {
@@ -45,7 +45,7 @@ const KIND_ICON: Record<NotificationKind, React.ReactNode> = {
   ),
 };
 
-export function NotificationsMenu({ notifications }: Props) {
+export function NotificationsMenu({ notifications = [] }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const hasUnread = notifications.length > 0;

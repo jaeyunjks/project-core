@@ -13,7 +13,7 @@ export const DAY_TYPE_MULTIPLIERS: Record<string, number> = {
   weekday: 1.0,         // 100% — base rate
   saturday: 1.25,       // 125%
   sunday: 1.5,          // 150%
-  public_holiday: 2.5,  // 250%
+  public_holiday: 2.25, // 225%
   custom: 1.0,          // manual override
 };
 
