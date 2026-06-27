@@ -13,6 +13,7 @@ interface Props {
   latest: PayPeriodDisplay | null;
   /** id of the period that contains today (preferred Log Hours target). */
   activePeriodId: string | null;
+  employerId?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -364,7 +365,7 @@ function SummaryRow({
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-export function HoursBoardOverview({ periods, latest, activePeriodId }: Props) {
+export function HoursBoardOverview({ periods, latest, activePeriodId, employerId }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
 
   const hasPeriods = periods.length > 0;
@@ -652,6 +653,7 @@ export function HoursBoardOverview({ periods, latest, activePeriodId }: Props) {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         latestPeriodEndDate={latest?.endDate ?? null}
+        employerId={employerId}
       />
     </div>
   );

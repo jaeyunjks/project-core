@@ -35,15 +35,6 @@ export function daysUntil(dateStr: string): number {
   return daysBetween(new Date(), parseLocalDate(dateStr));
 }
 
-/** Short "Jul 3" payday label */
-export function calculateNextPayday(
-  periodEndDate: string,
-  paydayOffsetDays: number
-): string {
-  return formatShortDate(
-    formatDateStr(addDays(parseLocalDate(periodEndDate), paydayOffsetDays))
-  );
-}
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
 
@@ -141,28 +132,42 @@ export async function getCurrentEmployer(): Promise<Employer> {
   return employer;
 }
 
+export async function getAllEmployers(userId: string): Promise<Employer[]> {
+  return db.employer.findMany({
+    where: { userId },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function getEmployerById(id: string): Promise<Employer | null> {
+  return db.employer.findUnique({ where: { id } });
+}
+
+export async function createEmployer(
+  userId: string,
+  data: { name: string; hourlyRate: number; defaultBreakMinutes: number }
+): Promise<Employer> {
+  return db.employer.create({
+    data: { userId, ...data },
+  });
+}
+
+export async function deleteEmployer(id: string): Promise<void> {
+  await db.employer.delete({ where: { id } });
+}
+
 export async function updateEmployer(
   id: string,
-  data: Partial<
-    Pick<
-      Employer,
-      | "name"
-      | "hourlyRate"
-      | "payCycle"
-      | "payPeriodStartDate"
-      | "paydayOffsetDays"
-      | "defaultBreakMinutes"
-    >
-  >
+  data: Partial<Pick<Employer, "name" | "hourlyRate" | "defaultBreakMinutes">>
 ): Promise<Employer> {
   return db.employer.update({ where: { id }, data });
 }
 
 // ── PayPeriod ─────────────────────────────────────────────────────────────────
 
-export async function getPayPeriods(userId: string): Promise<PayPeriodDisplay[]> {
+export async function getPayPeriods(userId: string, employerId?: string): Promise<PayPeriodDisplay[]> {
   const periods = await db.payPeriod.findMany({
-    where: { userId },
+    where: { userId, ...(employerId ? { employerId } : {}) },
     include: { days: { orderBy: { date: "asc" }, include: { awardLevel: true } } },
     orderBy: { startDate: "asc" },
   });
@@ -171,10 +176,11 @@ export async function getPayPeriods(userId: string): Promise<PayPeriodDisplay[]>
 }
 
 export async function getLatestPayPeriod(
-  userId: string
+  userId: string,
+  employerId?: string
 ): Promise<PayPeriodDisplay | null> {
   const p = await db.payPeriod.findFirst({
-    where: { userId },
+    where: { userId, ...(employerId ? { employerId } : {}) },
     include: { days: { orderBy: { date: "asc" }, include: { awardLevel: true } } },
     orderBy: { startDate: "desc" },
   });
@@ -208,9 +214,12 @@ export interface CreatePayPeriodInput {
  */
 export async function createCustomPayPeriod(
   userId: string,
-  input: CreatePayPeriodInput
+  input: CreatePayPeriodInput,
+  employerId?: string
 ): Promise<PayPeriodDisplay> {
-  const employer = await getCurrentEmployer();
+  const employer = employerId
+    ? await db.employer.findUniqueOrThrow({ where: { id: employerId } })
+    : await getCurrentEmployer();
   const { name, startDate, endDate } = input;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
@@ -238,6 +247,7 @@ export async function createCustomPayPeriod(
   const period = await db.payPeriod.create({
     data: {
       userId,
+      employerId: employer.id,
       name: name?.trim() || null,
       startDate,
       endDate,
@@ -389,17 +399,13 @@ export async function getDashboardHoursPreview(
   const latest = await getLatestPayPeriod(userId);
   if (!latest) return null;
 
-  const nextPaydayDate = formatDateStr(
-    addDays(parseLocalDate(latest.endDate), employer.paydayOffsetDays)
-  );
-
   return {
     periodLabel: latest.label,
     totalHours: latest.summary.totalHours,
     estimatedGross: latest.summary.estimatedGross,
     workedDays: latest.summary.workedDays,
-    nextPayday: calculateNextPayday(latest.endDate, employer.paydayOffsetDays),
-    nextPaydayDaysAway: Math.max(0, daysUntil(nextPaydayDate)),
+    nextPayday: "",
+    nextPaydayDaysAway: 0,
     hourlyRate: employer.hourlyRate,
     periodId: latest.id,
   };

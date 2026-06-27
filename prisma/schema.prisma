@@ -38,20 +38,14 @@ model Employer {
   id                  String        @id @default(cuid())
   userId              String
   name                String
-  // Fallback base rate (used when a day has no AwardLevel attached)
   hourlyRate          Float
-  // "weekly" | "fortnightly" | "monthly"
-  payCycle            String        @default("fortnightly")
-  // ISO date string (YYYY-MM-DD) — reference start of a pay period
-  payPeriodStartDate  String
-  // days after period end when pay arrives (e.g. 4 = paid 4 days after period closes)
-  paydayOffsetDays    Int           @default(4)
   defaultBreakMinutes Int           @default(30)
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   shifts              Shift[]
   awardLevels         AwardLevel[]
+  payPeriods          PayPeriod[]
 }
 
 // User-defined classification levels under a workplace award.
@@ -94,18 +88,21 @@ model Shift {
 }
 
 model PayPeriod {
-  id        String         @id @default(cuid())
-  userId    String
-  name      String?        // user-supplied label, optional
-  startDate String         // YYYY-MM-DD
-  endDate   String         // YYYY-MM-DD
-  // "active" | "closed"
-  status    String         @default("active")
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  days      PayPeriodDay[]
+  id         String         @id @default(cuid())
+  userId     String
+  employerId String
+  name       String?
+  startDate  String
+  endDate    String
+  status     String         @default("active")
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employer   Employer       @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  days       PayPeriodDay[]
   moneyEntries MoneyEntry[]
+
+  @@index([employerId])
 }
 
 model PayPeriodDay {

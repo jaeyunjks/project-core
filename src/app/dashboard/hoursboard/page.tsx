@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   getCurrentUser,
   getCurrentEmployer,
+  getAllEmployers,
   getPayPeriods,
   getPayPeriodById,
   getAwardLevels,
@@ -10,25 +11,32 @@ import { PayPeriodWorksheet } from "@/components/features/hoursboard/PayPeriodWo
 import { HoursBoardOverview } from "@/components/features/hoursboard/HoursBoardOverview";
 import { BackButton } from "@/components/ui/BackButton";
 import { PayPeriodActions } from "@/components/features/hoursboard/PayPeriodActions";
+import { EmployerSelector } from "@/components/features/hoursboard/EmployerSelector";
 
 export const metadata = { title: "HoursBoard — Coreboard" };
 
 interface Props {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; employer?: string }>;
 }
 
 export default async function HoursBoardPage({ searchParams }: Props) {
-  const { period: periodId } = await searchParams;
+  const { period: periodId, employer: employerParam } = await searchParams;
 
   const user = await getCurrentUser();
-  const employer = await getCurrentEmployer();
-  const allPeriods = await getPayPeriods(user.id);
+  const allEmployers = await getAllEmployers(user.id);
+
+  const selectedEmployer = employerParam
+    ? allEmployers.find((e) => e.id === employerParam) ?? allEmployers[0]
+    : allEmployers[0];
+
+  const employer = selectedEmployer ?? (await getCurrentEmployer());
+  const allPeriods = await getPayPeriods(user.id, employer.id);
   const awards = await getAwardLevels(user.id, employer.id);
 
   // Worksheet view — when a specific period is requested
   if (periodId) {
     const period = await getPayPeriodById(periodId);
-    const sortedAsc = allPeriods; // already asc
+    const sortedAsc = allPeriods;
     const currentIndex = period
       ? sortedAsc.findIndex((p) => p.id === period.id)
       : -1;
@@ -43,7 +51,7 @@ export default async function HoursBoardPage({ searchParams }: Props) {
         <div className="flex items-center justify-between h-11 mb-6">
           <div className="flex items-center gap-3 min-w-0">
             <Link
-              href="/dashboard/hoursboard"
+              href={`/dashboard/hoursboard${employer.id !== allEmployers[0]?.id ? `?employer=${employer.id}` : ""}`}
               className="w-[34px] h-[34px] shrink-0 rounded-[10px] border border-border bg-white flex items-center justify-center text-ink hover:border-sage/40 transition-colors"
               aria-label="Back to overview"
             >
@@ -122,8 +130,6 @@ export default async function HoursBoardPage({ searchParams }: Props) {
   const periodsNewestFirst = [...allPeriods].reverse();
   const latest = periodsNewestFirst[0] ?? null;
 
-  // Pick the "active" period — one that contains today, else fall back to latest.
-  // This is the target for the floating Log Hours button.
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const activePeriod =
@@ -134,7 +140,7 @@ export default async function HoursBoardPage({ searchParams }: Props) {
   return (
     <div className="px-5 py-4 max-w-2xl mx-auto md:max-w-6xl md:px-8 md:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-7">
+      <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
           <BackButton fallback="/dashboard" ariaLabel="Back to dashboard" />
           <div>
@@ -154,10 +160,19 @@ export default async function HoursBoardPage({ searchParams }: Props) {
         </Link>
       </div>
 
+      {/* Employer selector — only shows when >1 employer */}
+      {allEmployers.length > 1 && (
+        <EmployerSelector
+          employers={allEmployers.map((e) => ({ id: e.id, name: e.name }))}
+          selectedId={employer.id}
+        />
+      )}
+
       <HoursBoardOverview
         periods={periodsNewestFirst}
         latest={latest}
         activePeriodId={activePeriod?.id ?? null}
+        employerId={employer.id}
       />
     </div>
   );

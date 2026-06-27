@@ -50,9 +50,6 @@ export async function signupAction(
         create: {
           name: "My Job",
           hourlyRate: 0,
-          payCycle: "fortnightly",
-          payPeriodStartDate: new Date().toISOString().slice(0, 10),
-          paydayOffsetDays: 4,
           defaultBreakMinutes: 30,
         },
       },

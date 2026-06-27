@@ -8,6 +8,8 @@ import {
   createShift,
   deleteShift,
   updateEmployer,
+  createEmployer,
+  deleteEmployer,
   updatePayPeriodDay,
   createCustomPayPeriod,
   updatePayPeriod,
@@ -112,12 +114,14 @@ export async function createPayPeriodAction(
     return { ok: false, error: "End date must be on or after start date." };
   }
 
+  const employerId = ((formData.get("employerId") as string) ?? "").trim() || undefined;
+
   try {
-    const period = await createCustomPayPeriod(user.id, {
-      name: name || null,
-      startDate,
-      endDate,
-    });
+    const period = await createCustomPayPeriod(
+      user.id,
+      { name: name || null, startDate, endDate },
+      employerId
+    );
     revalidatePath("/dashboard/hoursboard");
     return { ok: true, id: period.id };
   } catch (e: unknown) {
@@ -181,20 +185,35 @@ export async function deletePayPeriodAction(formData: FormData): Promise<void> {
 }
 
 export async function updateEmployerAction(formData: FormData) {
-  const employer = await getCurrentEmployer();
+  const id = (formData.get("id") as string).trim();
 
-  await updateEmployer(employer.id, {
+  await updateEmployer(id, {
     name: (formData.get("name") as string).trim(),
     hourlyRate: parseFloat(formData.get("hourlyRate") as string),
-    payCycle: formData.get("payCycle") as string,
-    payPeriodStartDate: formData.get("payPeriodStartDate") as string,
-    paydayOffsetDays: parseInt(formData.get("paydayOffsetDays") as string, 10),
     defaultBreakMinutes: parseInt(
       formData.get("defaultBreakMinutes") as string,
       10
     ),
   });
 
+  revalidateAll();
+  redirect("/dashboard/hoursboard/settings");
+}
+
+export async function createEmployerAction(formData: FormData) {
+  const user = await getCurrentUser();
+  await createEmployer(user.id, {
+    name: (formData.get("name") as string).trim() || "New Job",
+    hourlyRate: parseFloat(formData.get("hourlyRate") as string) || 0,
+    defaultBreakMinutes: parseInt(formData.get("defaultBreakMinutes") as string, 10) || 30,
+  });
+  revalidateAll();
+  redirect("/dashboard/hoursboard/settings");
+}
+
+export async function deleteEmployerAction(formData: FormData) {
+  const id = (formData.get("id") as string).trim();
+  await deleteEmployer(id);
   revalidateAll();
   redirect("/dashboard/hoursboard/settings");
 }

@@ -40,11 +40,9 @@ function durationDays(start: string, end: string): number | null {
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** When provided, the modal opens in edit mode for this period. */
   editPeriod?: PayPeriodDisplay | null;
-  /** End date (YYYY-MM-DD) of the most recent existing period. Used to
-   *  enable the "Next week / Next fortnight" quick-fill buttons. */
   latestPeriodEndDate?: string | null;
+  employerId?: string;
 }
 
 export function NewPayPeriodModal({
@@ -52,6 +50,7 @@ export function NewPayPeriodModal({
   onClose,
   editPeriod,
   latestPeriodEndDate,
+  employerId,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -116,6 +115,7 @@ export function NewPayPeriodModal({
     fd.set("startDate", startDate);
     fd.set("endDate", endDate);
     if (editPeriod) fd.set("id", editPeriod.id);
+    if (employerId) fd.set("employerId", employerId);
 
     startTransition(async () => {
       const result = editPeriod

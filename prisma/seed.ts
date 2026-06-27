@@ -77,9 +77,6 @@ async function main() {
       userId: user.id,
       name: "The Café",
       hourlyRate: 13.0,
-      payCycle: "fortnightly",
-      payPeriodStartDate: "2026-06-16",
-      paydayOffsetDays: 4,
       defaultBreakMinutes: 30,
     },
   });
@@ -133,6 +130,7 @@ async function main() {
   const period = await prisma.payPeriod.create({
     data: {
       userId: user.id,
+      employerId: employer.id,
       startDate: "2026-06-16",
       endDate: "2026-06-29",
       status: "active",
