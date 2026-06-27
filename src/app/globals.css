@@ -88,3 +88,19 @@ body {
   animation: pc-shimmer 1.4s ease-in-out infinite;
   border-radius: 6px;
 }
+
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="date"],
+  input[type="time"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
