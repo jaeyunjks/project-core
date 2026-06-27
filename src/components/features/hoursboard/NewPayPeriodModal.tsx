@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   createPayPeriodAction,
@@ -135,9 +136,9 @@ export function NewPayPeriodModal({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4 pb-20 md:pb-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4 pb-20 md:pb-4"
       onClick={onClose}
     >
       <div
@@ -217,7 +218,7 @@ export function NewPayPeriodModal({
             )}
 
             {/* Dates */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[11px] font-semibold font-mono uppercase tracking-[0.08em] text-faint mb-1.5">
                   Start date
@@ -227,7 +228,7 @@ export function NewPayPeriodModal({
                   required
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full h-[46px] rounded-[12px] border border-border bg-white px-3 text-[14px] text-ink outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all"
+                  className="w-full h-[46px] rounded-[12px] border border-border bg-white px-3 text-[14px] text-ink outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all appearance-none"
                 />
               </div>
               <div>
@@ -240,7 +241,7 @@ export function NewPayPeriodModal({
                   value={endDate}
                   min={startDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full h-[46px] rounded-[12px] border border-border bg-white px-3 text-[14px] text-ink outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all"
+                  className="w-full h-[46px] rounded-[12px] border border-border bg-white px-3 text-[14px] text-ink outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all appearance-none"
                 />
               </div>
             </div>
@@ -289,6 +290,7 @@ export function NewPayPeriodModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

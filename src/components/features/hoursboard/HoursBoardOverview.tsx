@@ -530,6 +530,7 @@ export function HoursBoardOverview({ periods, latest, activePeriodId }: Props) {
                   return (
                     <div
                       key={p.id}
+                      data-period-card
                       className={cn(
                         "group bg-white border rounded-[14px] pl-4 pr-2 py-3 flex items-center gap-3 transition-all duration-150",
                         isActive

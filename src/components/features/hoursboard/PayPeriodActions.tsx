@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useRef, useEffect } from "react";
+import { useState, useTransition, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type { PayPeriodDisplay } from "@/types";
 import { NewPayPeriodModal } from "./NewPayPeriodModal";
 import { deletePayPeriodAction } from "@/server/actions/hoursboard";
@@ -14,13 +15,34 @@ export function PayPeriodActions({ period }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (!btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    setMenuPos({
+      top: rect.bottom + 6,
+      right: window.innerWidth - rect.right,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    updatePosition();
+    window.addEventListener("scroll", () => setMenuOpen(false), true);
+    return () => window.removeEventListener("scroll", () => setMenuOpen(false), true);
+  }, [menuOpen, updatePosition]);
 
   // Close menu on outside click
   useEffect(() => {
     if (!menuOpen) return;
     const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) {
         setMenuOpen(false);
       }
     };
@@ -38,49 +60,57 @@ export function PayPeriodActions({ period }: Props) {
 
   return (
     <>
-      <div ref={menuRef} className="relative">
-        <button
-          onClick={() => setMenuOpen((o) => !o)}
-          aria-label="Pay period actions"
-          className="w-[38px] h-[38px] rounded-[11px] border border-border bg-white flex items-center justify-center text-subtle hover:text-ink transition-colors"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <circle cx="5" cy="12" r="1.8" />
-            <circle cx="12" cy="12" r="1.8" />
-            <circle cx="19" cy="12" r="1.8" />
-          </svg>
-        </button>
+      <button
+        ref={btnRef}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setMenuOpen((o) => !o);
+        }}
+        aria-label="Pay period actions"
+        className="w-[38px] h-[38px] rounded-[11px] border border-border bg-white flex items-center justify-center text-subtle hover:text-ink transition-colors"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="1.8" />
+          <circle cx="12" cy="12" r="1.8" />
+          <circle cx="19" cy="12" r="1.8" />
+        </svg>
+      </button>
 
-        {menuOpen && (
-          <div className="absolute right-0 top-full mt-1.5 w-44 bg-white border border-border-soft rounded-[12px] shadow-[0_8px_24px_rgba(41,38,33,0.12)] overflow-hidden z-30">
-            <button
-              onClick={() => {
-                setMenuOpen(false);
-                setEditOpen(true);
-              }}
-              className="w-full px-3.5 py-2.5 text-left text-[13px] font-medium text-ink hover:bg-paper flex items-center gap-2.5"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-              Edit
-            </button>
-            <button
-              onClick={() => {
-                setMenuOpen(false);
-                setConfirmDelete(true);
-              }}
-              className="w-full px-3.5 py-2.5 text-left text-[13px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2.5 border-t border-border-soft"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" />
-              </svg>
-              Delete
-            </button>
-          </div>
-        )}
-      </div>
+      {menuOpen && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed w-44 bg-white border border-border-soft rounded-[12px] shadow-[0_8px_24px_rgba(41,38,33,0.12)] overflow-hidden z-[9999]"
+          style={{ top: menuPos.top, right: menuPos.right }}
+        >
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              setEditOpen(true);
+            }}
+            className="w-full px-3.5 py-2.5 text-left text-[13px] font-medium text-ink hover:bg-paper flex items-center gap-2.5"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            Edit
+          </button>
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              setConfirmDelete(true);
+            }}
+            className="w-full px-3.5 py-2.5 text-left text-[13px] font-medium text-red-600 hover:bg-red-50 flex items-center gap-2.5 border-t border-border-soft"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" />
+            </svg>
+            Delete
+          </button>
+        </div>,
+        document.body
+      )}
 
       {/* Edit modal */}
       <NewPayPeriodModal
@@ -90,9 +120,9 @@ export function PayPeriodActions({ period }: Props) {
       />
 
       {/* Delete confirmation */}
-      {confirmDelete && (
+      {confirmDelete && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4 pb-20 md:pb-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4 pb-20 md:pb-4"
           onClick={() => !isPending && setConfirmDelete(false)}
         >
           <div
@@ -127,7 +157,8 @@ export function PayPeriodActions({ period }: Props) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
