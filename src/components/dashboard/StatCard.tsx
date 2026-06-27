@@ -30,25 +30,25 @@ export function StatCard({
   trend,
 }: Props) {
   return (
-    <div className="group relative overflow-hidden bg-white border border-border-soft rounded-[14px] p-4 md:p-5 shadow-card hover:shadow-card-lg hover:border-border transition-all duration-200">
-      <div className="flex items-start justify-between mb-3.5">
-        <span className="text-[10px] font-semibold font-mono uppercase tracking-[0.16em] text-faint">
+    <div className="group relative overflow-hidden bg-white border border-border-soft rounded-[14px] p-3 md:p-5 shadow-card hover:shadow-card-lg hover:border-border transition-all duration-200">
+      <div className="flex items-start justify-between mb-2 md:mb-3.5">
+        <span className="text-[9px] md:text-[10px] font-semibold font-mono uppercase tracking-[0.16em] text-faint leading-tight">
           {label}
         </span>
         <span
           className={cn(
-            "w-8 h-8 rounded-[9px] flex items-center justify-center",
+            "w-6 h-6 md:w-8 md:h-8 rounded-[7px] md:rounded-[9px] flex items-center justify-center [&_svg]:w-[12px] [&_svg]:h-[12px] md:[&_svg]:w-[15px] md:[&_svg]:h-[15px]",
             TINTS[tint]
           )}
         >
           {icon}
         </span>
       </div>
-      <div className="text-[22px] md:text-[24px] font-semibold font-mono tracking-tight text-ink leading-none tabular-nums">
+      <div className="text-[17px] md:text-[24px] font-semibold font-mono tracking-tight text-ink leading-none tabular-nums">
         {value}
       </div>
       {subtext && (
-        <div className="flex items-center gap-1.5 mt-2 text-[12px] text-muted">
+        <div className="flex items-center gap-1 md:gap-1.5 mt-1.5 md:mt-2 text-[10px] md:text-[12px] text-muted">
           {trend && (
             <span
               className={cn(
@@ -62,7 +62,7 @@ export function StatCard({
           <span className="truncate">{subtext}</span>
         </div>
       )}
-      {visual && <div className="mt-3.5">{visual}</div>}
+      {visual && <div className="mt-2.5 md:mt-3.5">{visual}</div>}
     </div>
   );
 }

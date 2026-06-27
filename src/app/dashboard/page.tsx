@@ -359,7 +359,7 @@ export default async function DashboardPage() {
       />
 
       {/* ── Stat cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4 mb-7 md:mb-8">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5 md:gap-4 mb-7 md:mb-8">
         <StatCard
           label="Active apps"
           value={String(activeApps)}
@@ -435,14 +435,15 @@ export default async function DashboardPage() {
       <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-ghost mb-3">
         Coming soon
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+      <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-5 px-5 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-3 sm:gap-3 sm:overflow-visible sm:pb-0 mb-8 scrollbar-hide">
         {COMING_SOON.map((m) => (
-          <ComingSoonCard
-            key={m.id}
-            title={m.title}
-            description={m.description}
-            icon={m.icon}
-          />
+          <div key={m.id} className="min-w-[200px] sm:min-w-0 flex-shrink-0 sm:flex-shrink">
+            <ComingSoonCard
+              title={m.title}
+              description={m.description}
+              icon={m.icon}
+            />
+          </div>
         ))}
       </div>
 

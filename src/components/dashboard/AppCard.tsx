@@ -39,7 +39,7 @@ export function AppCard({
   return (
     <Link
       href={href}
-      className="group relative overflow-hidden bg-white border border-border-soft rounded-[18px] p-5 md:p-6 shadow-card hover:shadow-card-lg hover:border-border transition-all duration-200 flex flex-col"
+      className="group relative overflow-hidden bg-white border border-border-soft rounded-[16px] md:rounded-[18px] p-4 md:p-6 shadow-card hover:shadow-card-lg hover:border-border transition-all duration-200 flex flex-col"
     >
       {/* Faint decorative right-side block — hidden on small */}
       {visual && (
@@ -48,29 +48,35 @@ export function AppCard({
         </div>
       )}
 
-      <div className="flex items-start justify-between mb-5">
-        <div className="w-12 h-12 rounded-[13px] bg-sage text-paper flex items-center justify-center shadow-[0_4px_12px_rgba(62,91,77,0.22)]">
+      <div className="flex items-center gap-3 md:items-start md:justify-between mb-3 md:mb-5">
+        <div className="w-10 h-10 md:w-12 md:h-12 rounded-[11px] md:rounded-[13px] bg-sage text-paper flex items-center justify-center shadow-[0_4px_12px_rgba(62,91,77,0.22)] shrink-0">
           {icon}
         </div>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sage/10 text-sage text-[10px] font-semibold tracking-wide">
+        <div className="flex-1 md:hidden">
+          <div className="text-[16px] font-semibold tracking-tight text-ink leading-snug">
+            {title}
+          </div>
+          <p className="text-[12px] text-muted leading-snug">{description}</p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sage/10 text-sage text-[10px] font-semibold tracking-wide shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-sage" />
           {status}
         </span>
       </div>
 
-      <div className="text-[18px] md:text-[19px] font-semibold tracking-tight text-ink leading-snug">
+      <div className="hidden md:block text-[18px] md:text-[19px] font-semibold tracking-tight text-ink leading-snug">
         {title}
       </div>
-      <p className="text-[13px] text-muted mt-1 leading-relaxed">{description}</p>
+      <p className="hidden md:block text-[13px] text-muted mt-1 leading-relaxed">{description}</p>
 
       {/* Metadata strip */}
-      <div className="mt-5 grid grid-cols-2 gap-3">
+      <div className="mt-3 md:mt-5 grid grid-cols-2 gap-2 md:gap-3">
         {meta.map((m) => (
           <div key={m.label}>
-            <div className="text-[9.5px] font-semibold font-mono uppercase tracking-[0.16em] text-faint mb-1">
+            <div className="text-[9px] md:text-[9.5px] font-semibold font-mono uppercase tracking-[0.16em] text-faint mb-0.5 md:mb-1">
               {m.label}
             </div>
-            <div className="text-[14px] md:text-[15px] font-semibold font-mono tracking-tight text-ink tabular-nums">
+            <div className="text-[13px] md:text-[15px] font-semibold font-mono tracking-tight text-ink tabular-nums">
               {m.value}
             </div>
           </div>
@@ -78,15 +84,15 @@ export function AppCard({
       </div>
 
       {/* CTA */}
-      <div className="mt-6 flex items-center gap-2">
+      <div className="mt-4 md:mt-6 flex items-center gap-2">
         <span
           className={cn(
-            "inline-flex items-center gap-1.5 h-10 px-4 rounded-[11px] text-[13px] font-semibold transition-colors",
+            "inline-flex items-center gap-1.5 h-9 md:h-10 px-3.5 md:px-4 rounded-[11px] text-[12px] md:text-[13px] font-semibold transition-colors",
             ctaClass
           )}
         >
           Open {title}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:translate-x-0.5 transition-transform">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:translate-x-0.5 transition-transform">
             <path d="M5 12h14M13 6l6 6-6 6" />
           </svg>
         </span>

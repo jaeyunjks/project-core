@@ -15,18 +15,18 @@ export function HeroPanel({ name, greeting, dateLabel }: Props) {
         <div className="absolute right-8 bottom-10 w-20 h-1.5 rounded-full bg-sage/30" />
       </div>
 
-      <div className="relative px-6 py-8 md:px-10 md:py-10 max-w-[720px]">
-        <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-sage mb-2">
+      <div className="relative px-5 py-5 md:px-10 md:py-10 max-w-[720px]">
+        <div className="text-[9px] md:text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-sage mb-1.5 md:mb-2">
           Welcome back
         </div>
-        <h1 className="text-[28px] md:text-[36px] font-semibold tracking-tight text-ink leading-tight">
+        <h1 className="text-[22px] md:text-[36px] font-semibold tracking-tight text-ink leading-tight">
           {greeting}, {name}
         </h1>
-        <p className="text-[14px] md:text-[15px] text-muted mt-2.5 leading-relaxed max-w-[480px]">
+        <p className="text-[13px] md:text-[15px] text-muted mt-1.5 md:mt-2.5 leading-relaxed max-w-[480px]">
           Focus on what matters. Track, plan, and make progress.
         </p>
-        <div className="mt-5 inline-flex items-center gap-2 text-[12px] font-medium text-faint">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <div className="mt-3 md:mt-5 inline-flex items-center gap-2 text-[11px] md:text-[12px] font-medium text-faint">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="9" />
             <path d="M12 7v5l3 2" />
           </svg>
