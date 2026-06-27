@@ -173,6 +173,8 @@ export default async function HoursBoardPage({ searchParams }: Props) {
         latest={latest}
         activePeriodId={activePeriod?.id ?? null}
         employerId={employer.id}
+        awards={awards}
+        employerBaseRate={employer.hourlyRate}
       />
     </div>
   );

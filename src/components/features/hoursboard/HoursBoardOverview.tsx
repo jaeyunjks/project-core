@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useState, useMemo } from "react";
-import type { PayPeriodDisplay } from "@/types";
+import type { PayPeriodDisplay, AwardLevelDisplay } from "@/types";
 import { formatCurrency, formatHours, cn, parseLocalDate, daysBetween, todayStr } from "@/lib/utils";
 import { NewPayPeriodModal } from "./NewPayPeriodModal";
+import { LogHoursModal } from "./LogHoursModal";
 import { PayPeriodActions } from "./PayPeriodActions";
 import { HoursBarChart, type HoursBarDatum } from "./HoursBarChart";
 
@@ -14,6 +15,8 @@ interface Props {
   /** id of the period that contains today (preferred Log Hours target). */
   activePeriodId: string | null;
   employerId?: string;
+  awards?: AwardLevelDisplay[];
+  employerBaseRate?: number;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -365,8 +368,9 @@ function SummaryRow({
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-export function HoursBoardOverview({ periods, latest, activePeriodId, employerId }: Props) {
+export function HoursBoardOverview({ periods, latest, activePeriodId, employerId, awards = [], employerBaseRate = 0 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [logHoursOpen, setLogHoursOpen] = useState(false);
 
   const hasPeriods = periods.length > 0;
 
@@ -381,6 +385,13 @@ export function HoursBoardOverview({ periods, latest, activePeriodId, employerId
     : latest
       ? `/dashboard/hoursboard?period=${latest.id}`
       : null;
+
+  // Find today's entry in the active period for the quick-fill modal
+  const today = todayStr();
+  const activePeriod = activePeriodId
+    ? periods.find((p) => p.id === activePeriodId)
+    : null;
+  const todayEntry = activePeriod?.days.find((d) => d.date === today) ?? null;
 
   return (
     <div className="md:grid md:grid-cols-5 md:gap-6">
@@ -485,8 +496,18 @@ export function HoursBoardOverview({ periods, latest, activePeriodId, employerId
       {/* ── Action row (secondary) ── */}
       {hasPeriods && (
         <div className="flex items-center justify-between gap-2 mt-5 mb-3 pc-rise" style={{ animationDelay: "60ms" }}>
-          {/* Desktop-only inline Log Hours — FAB stays only on mobile */}
-          {logHoursHref ? (
+          {/* Desktop-only inline Log Hours */}
+          {todayEntry ? (
+            <button
+              onClick={() => setLogHoursOpen(true)}
+              className="hidden md:inline-flex h-9 px-3.5 rounded-[11px] bg-sage text-white text-[12px] font-semibold hover:bg-sage-deep transition-colors items-center gap-1.5 shadow-btn"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Log Hours
+            </button>
+          ) : logHoursHref ? (
             <Link
               href={logHoursHref}
               className="hidden md:inline-flex h-9 px-3.5 rounded-[11px] bg-sage text-white text-[12px] font-semibold hover:bg-sage-deep transition-colors items-center gap-1.5 shadow-btn"
@@ -631,7 +652,23 @@ export function HoursBoardOverview({ periods, latest, activePeriodId, employerId
       </div>
 
       {/* ── Floating Log Hours FAB — mobile only ── */}
-      {logHoursHref && (
+      {todayEntry ? (
+        <button
+          onClick={() => setLogHoursOpen(true)}
+          aria-label="Log hours"
+          className={cn(
+            "md:hidden fixed right-5 z-40 group",
+            periods.length > 1 ? "bottom-[152px]" : "bottom-[88px]"
+          )}
+        >
+          <div className="flex items-center gap-2 h-14 pl-5 pr-6 rounded-full bg-sage text-white shadow-[0_8px_24px_rgba(50,74,62,0.32)] hover:bg-sage-deep hover:shadow-[0_10px_28px_rgba(50,74,62,0.38)] transition-all duration-200 active:scale-95">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span className="text-[14px] font-semibold tracking-tight">Log Hours</span>
+          </div>
+        </button>
+      ) : logHoursHref ? (
         <Link
           href={logHoursHref}
           aria-label="Log hours"
@@ -647,7 +684,7 @@ export function HoursBoardOverview({ periods, latest, activePeriodId, employerId
             <span className="text-[14px] font-semibold tracking-tight">Log Hours</span>
           </div>
         </Link>
-      )}
+      ) : null}
 
       <NewPayPeriodModal
         open={modalOpen}
@@ -655,6 +692,17 @@ export function HoursBoardOverview({ periods, latest, activePeriodId, employerId
         latestPeriodEndDate={latest?.endDate ?? null}
         employerId={employerId}
       />
+
+      {todayEntry && activePeriod && (
+        <LogHoursModal
+          open={logHoursOpen}
+          onClose={() => setLogHoursOpen(false)}
+          todayEntry={todayEntry}
+          awards={awards}
+          employerBaseRate={employerBaseRate}
+          periodName={activePeriod.displayName}
+        />
+      )}
     </div>
   );
 }
