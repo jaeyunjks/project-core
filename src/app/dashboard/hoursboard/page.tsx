@@ -11,6 +11,7 @@ import { PayPeriodWorksheet } from "@/components/features/hoursboard/PayPeriodWo
 import { HoursBoardOverview } from "@/components/features/hoursboard/HoursBoardOverview";
 import { BackButton } from "@/components/ui/BackButton";
 import { PayPeriodActions } from "@/components/features/hoursboard/PayPeriodActions";
+import { ExportPdfButton } from "@/components/features/hoursboard/ExportPdfButton";
 import { EmployerSelector } from "@/components/features/hoursboard/EmployerSelector";
 
 export const metadata = { title: "HoursBoard — Coreboard" };
@@ -69,6 +70,7 @@ export default async function HoursBoardPage({ searchParams }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {period && <ExportPdfButton period={period} employerName={employer.name} />}
             {period && <PayPeriodActions period={period} />}
             <Link
               href="/dashboard/hoursboard/settings"
