@@ -112,6 +112,57 @@ export function datesBetween(startStr: string, endStr: string): string[] {
   return dates;
 }
 
+// ── Week / fortnight helpers ─────────────────────────────────────────────────
+
+export type ViewMode = "month" | "week" | "fortnight";
+
+/** Get the Monday-based week range containing a given date */
+export function weekRange(dateStr: string): { start: string; end: string } {
+  const d = parseLocalDate(dateStr);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const monday = addDays(d, diff);
+  const sunday = addDays(monday, 6);
+  return { start: formatDateStr(monday), end: formatDateStr(sunday) };
+}
+
+/** Get a fortnight (2-week) range: the Monday-based fortnight containing a date */
+export function fortnightRange(dateStr: string): { start: string; end: string } {
+  const { start } = weekRange(dateStr);
+  const monday = parseLocalDate(start);
+  const endDate = addDays(monday, 13);
+  return { start, end: formatDateStr(endDate) };
+}
+
+/** Shift a date range by +/-1 week */
+export function shiftWeek(dateStr: string, delta: number): string {
+  const d = parseLocalDate(dateStr);
+  return formatDateStr(addDays(d, delta * 7));
+}
+
+/** Shift a date range by +/-1 fortnight */
+export function shiftFortnight(dateStr: string, delta: number): string {
+  const d = parseLocalDate(dateStr);
+  return formatDateStr(addDays(d, delta * 14));
+}
+
+/** Format a date range like "23–29 Jun" or "23 Jun – 6 Jul" */
+export function formatDateRange(startStr: string, endStr: string): string {
+  const s = parseLocalDate(startStr);
+  const e = parseLocalDate(endStr);
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  if (s.getMonth() === e.getMonth()) {
+    return `${s.getDate()}–${e.getDate()} ${months[s.getMonth()]}`;
+  }
+  return `${s.getDate()} ${months[s.getMonth()]} – ${e.getDate()} ${months[e.getMonth()]}`;
+}
+
+/** Today as YYYY-MM-DD */
+export function todayDateStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // ── Currency formatting (matches A$1,262.00 style) ───────────────────────────
 
 /** Format A$ with thousands sep + 2 decimals. Optionally signed (+/−). */

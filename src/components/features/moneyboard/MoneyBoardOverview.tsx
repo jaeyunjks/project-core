@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type {
   MoneyCategoryDisplay,
   MonthlyMoneySummary,
@@ -9,8 +9,9 @@ import type {
   LifetimeMoneyStats,
 } from "@/types";
 import type { HoursBoardImportPreview } from "@/server/queries/moneyboard";
+import type { ViewMode } from "@/domain/moneyboard";
 import { cn } from "@/lib/utils";
-import { formatMoney, formatDayHeader, shiftMonth } from "@/domain/moneyboard";
+import { formatMoney, formatDayHeader, shiftMonth, shiftWeek, shiftFortnight, todayDateStr } from "@/domain/moneyboard";
 import { EntryModal } from "./EntryModal";
 import { ImportHoursBoardModal } from "./ImportHoursBoardModal";
 import { EntryRow } from "./EntryRow";
@@ -21,9 +22,38 @@ interface Props {
   navOptions: MonthNavOption[];
   lifetime: LifetimeMoneyStats;
   hoursBoardPreview: HoursBoardImportPreview | null;
+  view?: ViewMode;
 }
 
 const INITIAL_ENTRY_COUNT = 6;
+
+function getNavHrefs(view: ViewMode, summary: MonthlyMoneySummary) {
+  if (view === "week") {
+    const prev = shiftWeek(summary.monthKey, -1);
+    const next = shiftWeek(summary.monthKey, 1);
+    return {
+      prevHref: `/dashboard/moneyboard?view=week&date=${prev}`,
+      nextHref: `/dashboard/moneyboard?view=week&date=${next}`,
+      hasNext: next <= todayDateStr(),
+    };
+  }
+  if (view === "fortnight") {
+    const prev = shiftFortnight(summary.monthKey, -1);
+    const next = shiftFortnight(summary.monthKey, 1);
+    return {
+      prevHref: `/dashboard/moneyboard?view=fortnight&date=${prev}`,
+      nextHref: `/dashboard/moneyboard?view=fortnight&date=${next}`,
+      hasNext: next <= todayDateStr(),
+    };
+  }
+  const prev = shiftMonth(summary.monthKey, -1);
+  const next = shiftMonth(summary.monthKey, 1);
+  return {
+    prevHref: `/dashboard/moneyboard?month=${prev}`,
+    nextHref: `/dashboard/moneyboard?month=${next}`,
+    hasNext: next <= currentMonthKey(),
+  };
+}
 
 export function MoneyBoardOverview({
   summary,
@@ -31,6 +61,7 @@ export function MoneyBoardOverview({
   navOptions,
   lifetime,
   hoursBoardPreview,
+  view = "month",
 }: Props) {
   const [entryModal, setEntryModal] = useState<{ open: boolean; kind: "income" | "expense" }>({
     open: false,
@@ -38,33 +69,70 @@ export function MoneyBoardOverview({
   });
   const [importOpen, setImportOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [search, setSearch] = useState("");
 
   const isEmpty = summary.totalCount === 0;
-  const prevMonth = shiftMonth(summary.monthKey, -1);
-  const nextMonth = shiftMonth(summary.monthKey, 1);
+  const nav = getNavHrefs(view, summary);
 
-  // For nav arrows, only enable prev/next when a navOption (or current) exists
-  const hasPrev = true; // always allow walking back to older months
-  const hasNext = nextMonth <= currentMonthKey();
+  // Filter entries by search
+  const filteredGroups = useMemo(() => {
+    if (!search.trim()) return summary.groups;
+    const q = search.toLowerCase();
+    return summary.groups
+      .map((g) => ({
+        ...g,
+        entries: g.entries.filter(
+          (e) =>
+            e.note?.toLowerCase().includes(q) ||
+            e.category.label.toLowerCase().includes(q) ||
+            e.amount.toFixed(2).includes(q)
+        ),
+      }))
+      .filter((g) => g.entries.length > 0);
+  }, [summary.groups, search]);
+
+  const filteredCount = filteredGroups.reduce((s, g) => s + g.entries.length, 0);
 
   // Slice entry groups by row count for "show more"
   const visibleGroups = showAll
-    ? summary.groups
-    : sliceGroupsByEntryCount(summary.groups, INITIAL_ENTRY_COUNT);
+    ? filteredGroups
+    : sliceGroupsByEntryCount(filteredGroups, INITIAL_ENTRY_COUNT);
   const visibleCount = visibleGroups.reduce((s, g) => s + g.entries.length, 0);
-  const hiddenCount = summary.totalCount - visibleCount;
+  const hiddenCount = filteredCount - visibleCount;
 
   return (
     <div className="md:grid md:grid-cols-5 md:gap-6">
       {/* ── LEFT (60%) ── */}
       <div className="md:col-span-3 flex flex-col pb-4 md:pb-0">
+        {/* View toggle */}
+        <div className="flex items-center gap-1 p-1 bg-paper rounded-[12px] mb-4">
+          {(["month", "fortnight", "week"] as const).map((v) => (
+            <Link
+              key={v}
+              href={
+                v === "month"
+                  ? "/dashboard/moneyboard"
+                  : `/dashboard/moneyboard?view=${v}`
+              }
+              className={cn(
+                "flex-1 h-9 rounded-[9px] text-[12px] font-semibold flex items-center justify-center transition-all capitalize",
+                view === v
+                  ? "bg-white text-ink shadow-sm"
+                  : "text-subtle hover:text-ink"
+              )}
+            >
+              {v === "fortnight" ? "Fortnight" : v === "week" ? "Week" : "Month"}
+            </Link>
+          ))}
+        </div>
+
         {/* Overview card */}
         <OverviewCard
           summary={summary}
-          prevHref={`/dashboard/moneyboard?month=${prevMonth}`}
-          nextHref={`/dashboard/moneyboard?month=${nextMonth}`}
-          hasPrev={hasPrev}
-          hasNext={hasNext}
+          prevHref={nav.prevHref}
+          nextHref={nav.nextHref}
+          hasPrev={true}
+          hasNext={nav.hasNext}
         />
 
         {/* Quick add */}
@@ -94,13 +162,53 @@ export function MoneyBoardOverview({
           </div>
         )}
 
-        {/* Entries header */}
-        <div className="flex items-baseline justify-between mt-8 mb-3">
-          <div className="text-[11px] font-semibold font-mono uppercase tracking-[0.18em] text-muted">
-            Recent entries
-          </div>
-          <div className="text-[12px] text-faint">
-            {summary.totalCount} {summary.totalCount === 1 ? "entry" : "entries"}
+        {/* Search + entries header */}
+        <div className="mt-8 mb-3 flex flex-col gap-3">
+          {summary.totalCount > 0 && (
+            <div className="relative">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-ghost"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setShowAll(false); }}
+                placeholder="Search entries…"
+                className="w-full h-10 pl-9 pr-3 rounded-[11px] border border-border-soft bg-white text-[13px] text-ink placeholder:text-pale outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ghost hover:text-ink"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+          <div className="flex items-baseline justify-between">
+            <div className="text-[11px] font-semibold font-mono uppercase tracking-[0.18em] text-muted">
+              {search ? "Search results" : "Recent entries"}
+            </div>
+            <div className="text-[12px] text-faint">
+              {search
+                ? `${filteredCount} of ${summary.totalCount}`
+                : `${summary.totalCount} ${summary.totalCount === 1 ? "entry" : "entries"}`}
+            </div>
           </div>
         </div>
 

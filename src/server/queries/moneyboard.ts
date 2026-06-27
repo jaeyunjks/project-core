@@ -210,6 +210,91 @@ export async function getMonthlyMoneyData(
   };
 }
 
+/** Generic date-range query — used for week/fortnight views */
+export async function getDateRangeMoneyData(
+  userId: string,
+  start: string,
+  end: string,
+  rangeLabel: string,
+  rangeShort: string,
+  key: string
+): Promise<MonthlyMoneySummary> {
+  const entriesRaw = await db.moneyEntry.findMany({
+    where: { userId, date: { gte: start, lte: end } },
+    include: { category: true },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+  });
+
+  const entries = entriesRaw.map(toEntryDisplay);
+
+  let totalIncome = 0;
+  let totalExpenses = 0;
+  let incomeCount = 0;
+  let expenseCount = 0;
+  for (const e of entries) {
+    if (e.kind === "income") {
+      totalIncome += e.amount;
+      incomeCount++;
+    } else {
+      totalExpenses += e.amount;
+      expenseCount++;
+    }
+  }
+  const net = totalIncome - totalExpenses;
+  const savingsRate =
+    totalIncome > 0 ? Math.round((net / totalIncome) * 1000) / 10 : null;
+
+  const byCat = new Map<string, { row: CategoryBreakdownRow; total: number }>();
+  for (const e of entries) {
+    if (e.kind !== "expense") continue;
+    const existing = byCat.get(e.category.id);
+    if (existing) {
+      existing.total += e.amount;
+    } else {
+      byCat.set(e.category.id, {
+        row: {
+          categoryId: e.category.id,
+          key: e.category.key,
+          label: e.category.label,
+          color: e.category.color,
+          total: 0,
+          percent: 0,
+        },
+        total: e.amount,
+      });
+    }
+  }
+  const breakdown: CategoryBreakdownRow[] = [...byCat.values()]
+    .map(({ row, total }) => ({
+      ...row,
+      total: Math.round(total * 100) / 100,
+      percent: totalExpenses > 0 ? Math.round((total / totalExpenses) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const groups: MoneyEntryGroup[] = [];
+  for (const e of entries) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === e.date) last.entries.push(e);
+    else groups.push({ date: e.date, entries: [e] });
+  }
+
+  return {
+    monthKey: key,
+    monthLabel: rangeLabel,
+    monthRange: rangeShort,
+    totalIncome: Math.round(totalIncome * 100) / 100,
+    totalExpenses: Math.round(totalExpenses * 100) / 100,
+    net: Math.round(net * 100) / 100,
+    incomeCount,
+    expenseCount,
+    totalCount: entries.length,
+    savingsRate,
+    breakdown,
+    groups,
+  };
+}
+
 /** Lifetime totals — for the "Across all time" card */
 export async function getLifetimeMoneyStats(userId: string): Promise<LifetimeMoneyStats> {
   const entries = await db.moneyEntry.findMany({
