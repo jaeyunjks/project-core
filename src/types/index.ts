@@ -98,6 +98,7 @@ export interface MoneyEntryDisplay {
   id: string;
   kind: "income" | "expense";
   amount: number;            // positive
+  currency: string;          // ISO 4217 code, e.g. "AUD", "IDR"
   date: string;              // YYYY-MM-DD
   note: string | null;
   source: "manual" | "hoursboard";

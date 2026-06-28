@@ -140,9 +140,9 @@ export default async function DashboardPage() {
     await Promise.all([
       getCurrentEmployer(),
       getLatestPayPeriod(user.id),
-      getMonthlyMoneyData(user.id, monthKey),
-      getMonthlyMoneyData(user.id, prevMonthKey),
-      getLifetimeMoneyStats(user.id),
+      getMonthlyMoneyData(user.id, monthKey, "AUD"),
+      getMonthlyMoneyData(user.id, prevMonthKey, "AUD"),
+      getLifetimeMoneyStats(user.id, "AUD"),
       previewHoursBoardImport(user.id),
     ]);
 

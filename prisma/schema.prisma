@@ -153,6 +153,7 @@ model MoneyEntry {
   userId      String
   kind        String        // "income" | "expense"
   amount      Float         // positive value; sign comes from kind
+  currency    String        @default("AUD") // ISO 4217 code; see CURRENCIES in domain/moneyboard
   date        String        // YYYY-MM-DD
   categoryId  String
   note        String?

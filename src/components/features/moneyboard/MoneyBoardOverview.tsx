@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useState, useMemo } from "react";
 import type {
   MoneyCategoryDisplay,
@@ -12,6 +13,8 @@ import type { HoursBoardImportPreview } from "@/server/queries/moneyboard";
 import type { ViewMode } from "@/domain/moneyboard";
 import { cn } from "@/lib/utils";
 import { formatMoney, formatDayHeader, shiftMonth, shiftWeek, shiftFortnight, todayDateStr } from "@/domain/moneyboard";
+import type { CurrencyOption } from "@/domain/moneyboard";
+import { CurrencySelector } from "./CurrencySelector";
 import { EntryModal } from "./EntryModal";
 import { ImportHoursBoardModal } from "./ImportHoursBoardModal";
 import { EntryRow } from "./EntryRow";
@@ -23,17 +26,19 @@ interface Props {
   lifetime: LifetimeMoneyStats;
   hoursBoardPreview: HoursBoardImportPreview | null;
   view?: ViewMode;
+  currency: CurrencyOption;
 }
 
 const INITIAL_ENTRY_COUNT = 6;
 
-function getNavHrefs(view: ViewMode, summary: MonthlyMoneySummary) {
+function getNavHrefs(view: ViewMode, summary: MonthlyMoneySummary, currencyCode: string) {
+  const cur = `&currency=${currencyCode}`;
   if (view === "week") {
     const prev = shiftWeek(summary.monthKey, -1);
     const next = shiftWeek(summary.monthKey, 1);
     return {
-      prevHref: `/dashboard/moneyboard?view=week&date=${prev}`,
-      nextHref: `/dashboard/moneyboard?view=week&date=${next}`,
+      prevHref: `/dashboard/moneyboard?view=week&date=${prev}${cur}`,
+      nextHref: `/dashboard/moneyboard?view=week&date=${next}${cur}`,
       hasNext: next <= todayDateStr(),
     };
   }
@@ -41,16 +46,16 @@ function getNavHrefs(view: ViewMode, summary: MonthlyMoneySummary) {
     const prev = shiftFortnight(summary.monthKey, -1);
     const next = shiftFortnight(summary.monthKey, 1);
     return {
-      prevHref: `/dashboard/moneyboard?view=fortnight&date=${prev}`,
-      nextHref: `/dashboard/moneyboard?view=fortnight&date=${next}`,
+      prevHref: `/dashboard/moneyboard?view=fortnight&date=${prev}${cur}`,
+      nextHref: `/dashboard/moneyboard?view=fortnight&date=${next}${cur}`,
       hasNext: next <= todayDateStr(),
     };
   }
   const prev = shiftMonth(summary.monthKey, -1);
   const next = shiftMonth(summary.monthKey, 1);
   return {
-    prevHref: `/dashboard/moneyboard?month=${prev}`,
-    nextHref: `/dashboard/moneyboard?month=${next}`,
+    prevHref: `/dashboard/moneyboard?month=${prev}${cur}`,
+    nextHref: `/dashboard/moneyboard?month=${next}${cur}`,
     hasNext: next <= currentMonthKey(),
   };
 }
@@ -62,7 +67,11 @@ export function MoneyBoardOverview({
   lifetime,
   hoursBoardPreview,
   view = "month",
+  currency,
 }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [entryModal, setEntryModal] = useState<{ open: boolean; kind: "income" | "expense" }>({
     open: false,
     kind: "expense",
@@ -71,8 +80,14 @@ export function MoneyBoardOverview({
   const [showAll, setShowAll] = useState(false);
   const [search, setSearch] = useState("");
 
+  const setCurrency = (c: CurrencyOption) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("currency", c.code);
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
   const isEmpty = summary.totalCount === 0;
-  const nav = getNavHrefs(view, summary);
+  const nav = getNavHrefs(view, summary, currency.code);
 
   // Filter entries by search
   const filteredGroups = useMemo(() => {
@@ -104,26 +119,29 @@ export function MoneyBoardOverview({
     <div className="md:grid md:grid-cols-5 md:gap-6">
       {/* ── LEFT (60%) ── */}
       <div className="md:col-span-3 flex flex-col pb-4 md:pb-0">
-        {/* View toggle */}
-        <div className="flex items-center gap-1 p-1 bg-paper rounded-[12px] mb-4">
-          {(["month", "fortnight", "week"] as const).map((v) => (
-            <Link
-              key={v}
-              href={
-                v === "month"
-                  ? "/dashboard/moneyboard"
-                  : `/dashboard/moneyboard?view=${v}`
-              }
-              className={cn(
-                "flex-1 h-9 rounded-[9px] text-[12px] font-semibold flex items-center justify-center transition-all capitalize",
-                view === v
-                  ? "bg-white text-ink shadow-sm"
-                  : "text-subtle hover:text-ink"
-              )}
-            >
-              {v === "fortnight" ? "Fortnight" : v === "week" ? "Week" : "Month"}
-            </Link>
-          ))}
+        {/* View toggle + currency selector */}
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex-1 flex items-center gap-1 p-1 bg-paper rounded-[12px]">
+            {(["month", "fortnight", "week"] as const).map((v) => (
+              <Link
+                key={v}
+                href={
+                  v === "month"
+                    ? `/dashboard/moneyboard?currency=${currency.code}`
+                    : `/dashboard/moneyboard?view=${v}&currency=${currency.code}`
+                }
+                className={cn(
+                  "flex-1 h-9 rounded-[9px] text-[12px] font-semibold flex items-center justify-center transition-all capitalize",
+                  view === v
+                    ? "bg-white text-ink shadow-sm"
+                    : "text-subtle hover:text-ink"
+                )}
+              >
+                {v === "fortnight" ? "Fortnight" : v === "week" ? "Week" : "Month"}
+              </Link>
+            ))}
+          </div>
+          <CurrencySelector currency={currency} onChange={setCurrency} />
         </div>
 
         {/* Overview card */}
@@ -133,6 +151,7 @@ export function MoneyBoardOverview({
           nextHref={nav.nextHref}
           hasPrev={true}
           hasNext={nav.hasNext}
+          currency={currency}
         />
 
         {/* Quick add */}
@@ -158,7 +177,7 @@ export function MoneyBoardOverview({
         {/* Mobile-only: condensed breakdown right under quick add */}
         {!isEmpty && (
           <div className="md:hidden mt-4">
-            <BreakdownCard summary={summary} compact />
+            <BreakdownCard summary={summary} compact currency={currency} />
           </div>
         )}
 
@@ -282,22 +301,22 @@ export function MoneyBoardOverview({
       <div className="hidden md:block md:col-span-2 mt-0">
         <div className="md:sticky md:top-6 flex flex-col gap-4">
           {/* This month summary */}
-          <ThisMonthCard summary={summary} />
+          <ThisMonthCard summary={summary} currency={currency} />
 
           {/* Breakdown */}
           {!isEmpty && summary.breakdown.length > 0 && (
-            <BreakdownCard summary={summary} />
+            <BreakdownCard summary={summary} currency={currency} />
           )}
 
           {/* Across all time */}
-          {lifetime.months > 1 && <LifetimeCard lifetime={lifetime} />}
+          {lifetime.months > 1 && <LifetimeCard lifetime={lifetime} currency={currency} />}
         </div>
       </div>
 
       {/* Mobile-only stacked extras */}
       <div className="md:hidden mt-6 flex flex-col gap-4">
-        {!isEmpty && <ThisMonthCard summary={summary} />}
-        {lifetime.months > 1 && <LifetimeCard lifetime={lifetime} />}
+        {!isEmpty && <ThisMonthCard summary={summary} currency={currency} />}
+        {lifetime.months > 1 && <LifetimeCard lifetime={lifetime} currency={currency} />}
       </div>
 
       {/* Modals */}
@@ -306,6 +325,7 @@ export function MoneyBoardOverview({
         onClose={() => setEntryModal((s) => ({ ...s, open: false }))}
         categories={categories}
         initialKind={entryModal.kind}
+        defaultCurrency={currency}
       />
       <ImportHoursBoardModal
         open={importOpen}
@@ -324,12 +344,14 @@ function OverviewCard({
   nextHref,
   hasPrev,
   hasNext,
+  currency,
 }: {
   summary: MonthlyMoneySummary;
   prevHref: string;
   nextHref: string;
   hasPrev: boolean;
   hasNext: boolean;
+  currency: CurrencyOption;
 }) {
   const isEmpty = summary.totalCount === 0;
   const positive = summary.net >= 0;
@@ -367,8 +389,8 @@ function OverviewCard({
             )}
           >
             {isEmpty
-              ? "A$0.00"
-              : formatMoney(summary.net, { signed: true })}
+              ? `${currency.symbol}0${currency.code === "JPY" ? "" : ".00"}`
+              : formatMoney(summary.net, { signed: true, currency })}
           </div>
           {!isEmpty && (
             <div
@@ -408,7 +430,7 @@ function OverviewCard({
               Money in
             </div>
             <div className="text-[20px] md:text-[22px] font-mono font-semibold text-sage tracking-tight">
-              {formatMoney(summary.totalIncome)}
+              {formatMoney(summary.totalIncome, { currency })}
             </div>
             <div className="text-[12px] text-muted mt-1">
               {summary.incomeCount} {summary.incomeCount === 1 ? "entry" : "entries"}
@@ -419,7 +441,7 @@ function OverviewCard({
               Money out
             </div>
             <div className="text-[20px] md:text-[22px] font-mono font-semibold text-[#8A3F2E] tracking-tight">
-              {formatMoney(summary.totalExpenses)}
+              {formatMoney(summary.totalExpenses, { currency })}
             </div>
             <div className="text-[12px] text-muted mt-1">
               {summary.expenseCount} {summary.expenseCount === 1 ? "entry" : "entries"}
@@ -431,7 +453,7 @@ function OverviewCard({
   );
 }
 
-function ThisMonthCard({ summary }: { summary: MonthlyMoneySummary }) {
+function ThisMonthCard({ summary, currency }: { summary: MonthlyMoneySummary; currency: CurrencyOption }) {
   return (
     <div className="bg-white border border-border-soft rounded-[14px] px-6 py-5 shadow-card">
       <div className="flex justify-between items-baseline mb-3">
@@ -440,12 +462,12 @@ function ThisMonthCard({ summary }: { summary: MonthlyMoneySummary }) {
         </div>
         <div className="text-[10px] font-mono text-muted">{summary.monthLabel}</div>
       </div>
-      <SummaryRow label="Total income" value={formatMoney(summary.totalIncome)} valueColor="sage" />
-      <SummaryRow label="Total expenses" value={formatMoney(summary.totalExpenses)} valueColor="red" />
+      <SummaryRow label="Total income" value={formatMoney(summary.totalIncome, { currency })} valueColor="sage" />
+      <SummaryRow label="Total expenses" value={formatMoney(summary.totalExpenses, { currency })} valueColor="red" />
       <div className="h-px bg-border-soft my-2" />
       <SummaryRow
         label="Net balance"
-        value={formatMoney(summary.net, { signed: true })}
+        value={formatMoney(summary.net, { signed: true, currency })}
         valueColor={summary.net >= 0 ? "sage" : "red"}
         bold
       />
@@ -463,9 +485,11 @@ function ThisMonthCard({ summary }: { summary: MonthlyMoneySummary }) {
 function BreakdownCard({
   summary,
   compact = false,
+  currency,
 }: {
   summary: MonthlyMoneySummary;
   compact?: boolean;
+  currency: CurrencyOption;
 }) {
   const { breakdown, totalExpenses } = summary;
   if (breakdown.length === 0) return null;
@@ -477,7 +501,7 @@ function BreakdownCard({
           Breakdown
         </div>
         <div className="text-[10px] font-mono text-muted">
-          expenses · {formatMoney(totalExpenses)}
+          expenses · {formatMoney(totalExpenses, { currency })}
         </div>
       </div>
 
@@ -511,7 +535,7 @@ function BreakdownCard({
                 {b.percent}%
               </div>
               <div className="text-[13px] font-mono text-ink tabular-nums">
-                {formatMoney(b.total)}
+                {formatMoney(b.total, { currency })}
               </div>
             </div>
           ))}
@@ -535,7 +559,7 @@ function BreakdownCard({
   );
 }
 
-function LifetimeCard({ lifetime }: { lifetime: LifetimeMoneyStats }) {
+function LifetimeCard({ lifetime, currency }: { lifetime: LifetimeMoneyStats; currency: CurrencyOption }) {
   return (
     <div className="bg-white border border-border-soft rounded-[14px] px-6 py-4 shadow-card">
       <div className="flex justify-between items-baseline mb-3">
@@ -547,9 +571,9 @@ function LifetimeCard({ lifetime }: { lifetime: LifetimeMoneyStats }) {
         </div>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <MiniStat label="Income" value={formatMoney(lifetime.totalIncome)} color="sage" />
-        <MiniStat label="Expenses" value={formatMoney(lifetime.totalExpenses)} color="red" />
-        <MiniStat label="Net" value={formatMoney(lifetime.net, { signed: true })} color="ink" />
+        <MiniStat label="Income" value={formatMoney(lifetime.totalIncome, { currency })} color="sage" />
+        <MiniStat label="Expenses" value={formatMoney(lifetime.totalExpenses, { currency })} color="red" />
+        <MiniStat label="Net" value={formatMoney(lifetime.net, { signed: true, currency })} color="ink" />
       </div>
     </div>
   );

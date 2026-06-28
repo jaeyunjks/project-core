@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { MoneyEntryDisplay, MoneyCategoryDisplay } from "@/types";
 import { cn } from "@/lib/utils";
-import { formatMoney } from "@/domain/moneyboard";
+import { formatMoney, CURRENCIES, DEFAULT_CURRENCY } from "@/domain/moneyboard";
+import type { CurrencyOption } from "@/domain/moneyboard";
 import { CategoryIcon } from "./CategoryIcon";
 import { EntryModal } from "./EntryModal";
 import {
@@ -20,6 +21,9 @@ interface Props {
 }
 
 export function EntryRow({ entry, categories, position = "single" }: Props) {
+  // Each entry is displayed in the currency it was saved with.
+  const currency: CurrencyOption =
+    CURRENCIES.find((c) => c.code === entry.currency) ?? DEFAULT_CURRENCY;
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -113,7 +117,7 @@ export function EntryRow({ entry, categories, position = "single" }: Props) {
           )}
         >
           {isIncome ? "+" : "−"}
-          {formatMoney(entry.amount)}
+          {formatMoney(entry.amount, { currency })}
         </div>
 
         {/* Menu */}
@@ -216,7 +220,7 @@ export function EntryRow({ entry, categories, position = "single" }: Props) {
             <p className="text-[13px] text-muted mb-5">
               {entry.note || entry.category.label} ·{" "}
               {isIncome ? "+" : "−"}
-              {formatMoney(entry.amount)}
+              {formatMoney(entry.amount, { currency })}
             </p>
             <div className="flex items-center justify-end gap-2">
               <button

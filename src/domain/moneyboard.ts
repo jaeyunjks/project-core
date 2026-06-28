@@ -163,21 +163,105 @@ export function todayDateStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// ── Currency formatting (matches A$1,262.00 style) ───────────────────────────
+// ── Currency ────────────────────────────────────────────────────────────────
 
-/** Format A$ with thousands sep + 2 decimals. Optionally signed (+/−). */
+export interface CurrencyOption {
+  code: string;
+  symbol: string;
+  label: string;
+  locale: string;
+}
+
+export const CURRENCIES: CurrencyOption[] = [
+  { code: "AUD", symbol: "A$", label: "Australian Dollar", locale: "en-AU" },
+  { code: "USD", symbol: "$",  label: "US Dollar",         locale: "en-US" },
+  { code: "GBP", symbol: "£",  label: "British Pound",     locale: "en-GB" },
+  { code: "EUR", symbol: "€",  label: "Euro",              locale: "de-DE" },
+  { code: "JPY", symbol: "¥",  label: "Japanese Yen",      locale: "ja-JP" },
+  { code: "CAD", symbol: "C$", label: "Canadian Dollar",   locale: "en-CA" },
+  { code: "NZD", symbol: "NZ$",label: "New Zealand Dollar",locale: "en-NZ" },
+  { code: "IDR", symbol: "Rp", label: "Indonesian Rupiah", locale: "id-ID" },
+  { code: "MYR", symbol: "RM", label: "Malaysian Ringgit", locale: "ms-MY" },
+  { code: "SGD", symbol: "S$", label: "Singapore Dollar",  locale: "en-SG" },
+];
+
+export const DEFAULT_CURRENCY = CURRENCIES[0];
+
+/**
+ * Group ("thousands") and decimal separators for a currency, derived from
+ * Intl.NumberFormat — single source of truth, no hardcoded locale tables.
+ */
+export function getSeparators(currency: CurrencyOption): { group: string; decimal: string } {
+  const parts = new Intl.NumberFormat(currency.locale).formatToParts(12345.6);
+  const group = parts.find((p) => p.type === "group")?.value ?? ",";
+  const decimal = parts.find((p) => p.type === "decimal")?.value ?? ".";
+  return { group, decimal };
+}
+
+/** True if the currency uses no fractional digits (e.g. JPY). */
+export function isWholeNumberCurrency(currency: CurrencyOption): boolean {
+  return currency.code === "JPY";
+}
+
+/**
+ * Parse a user-typed amount string against the currency's locale conventions.
+ * Returns NaN for invalid input. Handles examples like:
+ *   IDR: "100.000"     → 100000
+ *   EUR: "1.234,56"    → 1234.56
+ *   USD: "1,234.56"    → 1234.56
+ *   JPY: "1,000"       → 1000
+ */
+export function parseAmountInput(str: string, currency: CurrencyOption): number {
+  if (!str) return NaN;
+  const { group, decimal } = getSeparators(currency);
+  // Strip all group separators, then convert the locale decimal to '.'
+  const normalized = str.split(group).join("").replace(decimal, ".");
+  // Reject anything other than digits + a single dot
+  if (!/^\d*(\.\d*)?$/.test(normalized)) return NaN;
+  const n = parseFloat(normalized);
+  if (!Number.isFinite(n)) return NaN;
+  return isWholeNumberCurrency(currency) ? Math.round(n) : n;
+}
+
+/**
+ * Filter a raw input string to keep only chars valid for this currency
+ * (digits + group/decimal separators; decimal forbidden for whole-number
+ * currencies). Used in onChange to block typos in real time.
+ */
+export function sanitizeAmountInput(str: string, currency: CurrencyOption): string {
+  const { group, decimal } = getSeparators(currency);
+  const allowDecimal = !isWholeNumberCurrency(currency);
+  // Build a character whitelist
+  const allowed = new Set<string>(["0","1","2","3","4","5","6","7","8","9", group]);
+  if (allowDecimal) allowed.add(decimal);
+  let out = "";
+  let decimalSeen = false;
+  for (const ch of str) {
+    if (!allowed.has(ch)) continue;
+    if (ch === decimal) {
+      if (decimalSeen) continue;
+      decimalSeen = true;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/** Format money with a configurable currency. Optionally signed (+/−). */
 export function formatMoney(
   amount: number,
-  opts: { signed?: boolean; absolute?: boolean } = {}
+  opts: { signed?: boolean; absolute?: boolean; currency?: CurrencyOption } = {}
 ): string {
+  const cur = opts.currency ?? DEFAULT_CURRENCY;
   const value = opts.absolute ? Math.abs(amount) : amount;
-  const formatted = Math.abs(value).toLocaleString("en-AU", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  const decimals = cur.code === "JPY" ? 0 : 2;
+  const formatted = Math.abs(value).toLocaleString(cur.locale, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   });
   if (opts.signed) {
     const sign = value > 0 ? "+" : value < 0 ? "−" : "";
-    return `${sign}A$${formatted}`;
+    return `${sign}${cur.symbol}${formatted}`;
   }
-  return `A$${formatted}`;
+  return `${cur.symbol}${formatted}`;
 }

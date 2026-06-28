@@ -41,6 +41,7 @@ function toEntryDisplay(e: EntryWithCat): MoneyEntryDisplay {
     id: e.id,
     kind: e.kind as "income" | "expense",
     amount: e.amount,
+    currency: e.currency,
     date: e.date,
     note: e.note,
     source: e.source as "manual" | "hoursboard",
@@ -91,7 +92,10 @@ export async function getMonthsWithEntries(userId: string): Promise<string[]> {
 }
 
 /** Build month nav options (current month always included, even if empty) */
-export async function getMonthNavOptions(userId: string): Promise<MonthNavOption[]> {
+export async function getMonthNavOptions(
+  userId: string,
+  currency: string
+): Promise<MonthNavOption[]> {
   const months = await getMonthsWithEntries(userId);
   const curr = currentMonthKey();
   if (!months.includes(curr)) months.unshift(curr);
@@ -102,7 +106,7 @@ export async function getMonthNavOptions(userId: string): Promise<MonthNavOption
   for (const mk of sorted) {
     const { start, end } = monthRange(mk);
     const entries = await db.moneyEntry.findMany({
-      where: { userId, date: { gte: start, lte: end } },
+      where: { userId, currency, date: { gte: start, lte: end } },
       select: { kind: true, amount: true },
     });
     let income = 0;
@@ -125,12 +129,13 @@ export async function getMonthNavOptions(userId: string): Promise<MonthNavOption
 /** Full monthly summary — overview hero + breakdown + grouped entry list */
 export async function getMonthlyMoneyData(
   userId: string,
-  monthKey: string
+  monthKey: string,
+  currency: string
 ): Promise<MonthlyMoneySummary> {
   const { start, end } = monthRange(monthKey);
 
   const entriesRaw = await db.moneyEntry.findMany({
-    where: { userId, date: { gte: start, lte: end } },
+    where: { userId, currency, date: { gte: start, lte: end } },
     include: { category: true },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
   });
@@ -217,10 +222,11 @@ export async function getDateRangeMoneyData(
   end: string,
   rangeLabel: string,
   rangeShort: string,
-  key: string
+  key: string,
+  currency: string
 ): Promise<MonthlyMoneySummary> {
   const entriesRaw = await db.moneyEntry.findMany({
-    where: { userId, date: { gte: start, lte: end } },
+    where: { userId, currency, date: { gte: start, lte: end } },
     include: { category: true },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
   });
@@ -296,9 +302,12 @@ export async function getDateRangeMoneyData(
 }
 
 /** Lifetime totals — for the "Across all time" card */
-export async function getLifetimeMoneyStats(userId: string): Promise<LifetimeMoneyStats> {
+export async function getLifetimeMoneyStats(
+  userId: string,
+  currency: string
+): Promise<LifetimeMoneyStats> {
   const entries = await db.moneyEntry.findMany({
-    where: { userId },
+    where: { userId, currency },
     select: { kind: true, amount: true, date: true },
   });
   let income = 0;
@@ -322,6 +331,7 @@ export async function getLifetimeMoneyStats(userId: string): Promise<LifetimeMon
 export interface MoneyEntryInput {
   kind: "income" | "expense";
   amount: number;            // positive
+  currency: string;          // ISO 4217 code
   date: string;              // YYYY-MM-DD
   categoryId: string;
   note: string | null;
@@ -345,6 +355,7 @@ export async function createMoneyEntry(
       userId,
       kind: input.kind,
       amount: Math.round(Math.abs(input.amount) * 100) / 100,
+      currency: input.currency,
       date: input.date,
       categoryId: input.categoryId,
       note: input.note?.trim() || null,
@@ -374,6 +385,7 @@ export async function updateMoneyEntry(
     data: {
       kind: input.kind,
       amount: Math.round(Math.abs(input.amount) * 100) / 100,
+      currency: input.currency,
       date: input.date,
       categoryId: input.categoryId,
       note: input.note?.trim() || null,
@@ -400,6 +412,7 @@ export async function duplicateMoneyEntry(id: string, userId: string): Promise<M
       userId,
       kind: src.kind,
       amount: src.amount,
+      currency: src.currency,
       date: src.date,
       categoryId: src.categoryId,
       note: src.note,
@@ -512,6 +525,7 @@ export async function importHoursBoardPeriod(
   return createMoneyEntry(userId, {
     kind: "income",
     amount: estimatedGross,
+    currency: "AUD", // HoursBoard pay periods are tracked in AUD
     date: period.endDate,
     categoryId: workCat.id,
     note,

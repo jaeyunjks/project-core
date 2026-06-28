@@ -13,6 +13,8 @@ import {
   fortnightRange,
   formatDateRange,
   todayDateStr,
+  CURRENCIES,
+  DEFAULT_CURRENCY,
 } from "@/domain/moneyboard";
 import type { ViewMode } from "@/domain/moneyboard";
 import { MoneyBoardOverview } from "@/components/features/moneyboard/MoneyBoardOverview";
@@ -21,15 +23,19 @@ import { BackButton } from "@/components/ui/BackButton";
 export const metadata = { title: "MoneyBoard — Coreboard" };
 
 interface Props {
-  searchParams: Promise<{ month?: string; view?: string; date?: string }>;
+  searchParams: Promise<{ month?: string; view?: string; date?: string; currency?: string }>;
 }
 
 const VALID_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const VALID_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function MoneyBoardPage({ searchParams }: Props) {
-  const { month, view: viewParam, date: dateParam } = await searchParams;
+  const { month, view: viewParam, date: dateParam, currency: currencyParam } = await searchParams;
   const user = await getCurrentUser();
+
+  const currency =
+    (currencyParam && CURRENCIES.find((c) => c.code === currencyParam.toUpperCase())) ||
+    DEFAULT_CURRENCY;
 
   const view: ViewMode =
     viewParam === "week" || viewParam === "fortnight" ? viewParam : "month";
@@ -48,7 +54,8 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
       range.end,
       `Week of ${formatDateRange(range.start, range.end)}`,
       formatDateRange(range.start, range.end),
-      anchor
+      anchor,
+      currency.code
     );
   } else if (view === "fortnight") {
     const anchor = dateParam && VALID_DATE.test(dateParam) ? dateParam : today;
@@ -60,17 +67,18 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
       range.end,
       `Fortnight: ${formatDateRange(range.start, range.end)}`,
       formatDateRange(range.start, range.end),
-      anchor
+      anchor,
+      currency.code
     );
   } else {
     monthKey = month && VALID_MONTH.test(month) ? month : currentMonthKey();
-    summary = await getMonthlyMoneyData(user.id, monthKey);
+    summary = await getMonthlyMoneyData(user.id, monthKey, currency.code);
   }
 
   const [categories, navOptions, lifetime, hbPreview] = await Promise.all([
     getCategories(user.id),
-    getMonthNavOptions(user.id),
-    getLifetimeMoneyStats(user.id),
+    getMonthNavOptions(user.id, currency.code),
+    getLifetimeMoneyStats(user.id, currency.code),
     previewHoursBoardImport(user.id),
   ]);
 
@@ -95,6 +103,7 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
         lifetime={lifetime}
         hoursBoardPreview={hbPreview}
         view={view}
+        currency={currency}
       />
     </div>
   );

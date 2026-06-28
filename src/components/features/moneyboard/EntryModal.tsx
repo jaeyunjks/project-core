@@ -4,8 +4,15 @@ import { useState, useEffect, useMemo, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { MoneyCategoryDisplay, MoneyEntryDisplay } from "@/types";
 import { cn } from "@/lib/utils";
-import { formatMoney } from "@/domain/moneyboard";
+import {
+  formatMoney,
+  parseAmountInput,
+  sanitizeAmountInput,
+  getSeparators,
+  isWholeNumberCurrency,
+} from "@/domain/moneyboard";
 import { CategoryIcon } from "./CategoryIcon";
+import { CURRENCIES, DEFAULT_CURRENCY, type CurrencyOption } from "@/domain/moneyboard";
 import {
   createMoneyEntryAction,
   updateMoneyEntryAction,
@@ -19,6 +26,13 @@ interface Props {
   editEntry?: MoneyEntryDisplay | null;
   /** Initial kind when creating; defaults to "expense" */
   initialKind?: "income" | "expense";
+  /** Currency to use for a NEW entry (the page's active currency view) */
+  defaultCurrency?: CurrencyOption;
+}
+
+function lookupCurrency(code: string | undefined): CurrencyOption {
+  if (!code) return DEFAULT_CURRENCY;
+  return CURRENCIES.find((c) => c.code === code) ?? DEFAULT_CURRENCY;
 }
 
 function todayStr(): string {
@@ -32,9 +46,24 @@ export function EntryModal({
   categories,
   editEntry,
   initialKind = "expense",
+  defaultCurrency = DEFAULT_CURRENCY,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+
+  // Currency is FIXED per-entry: it comes from the entry being edited,
+  // or from the page's active currency when creating a new one.
+  const currency = editEntry
+    ? lookupCurrency(editEntry.currency)
+    : defaultCurrency;
+  const { decimal: decimalSep } = getSeparators(currency);
+
+  // Convert a number → input-string in the active locale's decimal style.
+  const numberToInputStr = (n: number): string => {
+    if (!Number.isFinite(n)) return "";
+    const decimals = isWholeNumberCurrency(currency) ? 0 : 2;
+    return n.toFixed(decimals).replace(".", decimalSep);
+  };
 
   const isEditing = !!editEntry;
   const [kind, setKind] = useState<"income" | "expense">(
@@ -51,7 +80,7 @@ export function EntryModal({
     if (!open) return;
     if (editEntry) {
       setKind(editEntry.kind);
-      setAmountStr(editEntry.amount.toFixed(2));
+      setAmountStr(numberToInputStr(editEntry.amount));
       setDate(editEntry.date);
       setCategoryId(editEntry.category.id);
       setNote(editEntry.note ?? "");
@@ -88,7 +117,7 @@ export function EntryModal({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const amountNum = parseFloat(amountStr);
+  const amountNum = parseAmountInput(amountStr, currency);
   const validAmount = Number.isFinite(amountNum) && amountNum > 0;
   const canSubmit = validAmount && !!categoryId && !!date && !isPending;
 
@@ -100,6 +129,7 @@ export function EntryModal({
     const fd = new FormData();
     fd.set("kind", kind);
     fd.set("amount", String(amountNum));
+    fd.set("currency", currency.code);
     fd.set("date", date);
     fd.set("categoryId", categoryId);
     fd.set("note", note);
@@ -121,7 +151,9 @@ export function EntryModal({
   if (!open) return null;
 
   const isExpense = kind === "expense";
-  const previewAmount = validAmount ? formatMoney(amountNum) : "A$0.00";
+  const previewAmount = validAmount
+    ? formatMoney(amountNum, { currency })
+    : `${currency.symbol}0${currency.code === "JPY" ? "" : ".00"}`;
   const ctaLabel = isEditing
     ? `Save changes`
     : `Add ${kind} · ${previewAmount}`;
@@ -185,17 +217,22 @@ export function EntryModal({
           <div className="px-6 pb-4 flex flex-col gap-4">
             {/* Big amount input */}
             <div className="bg-white border border-border-soft rounded-[12px] px-4 py-3.5">
-              <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.16em] text-faint">
-                Amount
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.16em] text-faint">
+                  Amount
+                </div>
+                <div className="text-[10px] font-mono text-muted tracking-wide">
+                  {currency.code}
+                </div>
               </div>
               <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-[18px] font-mono text-muted">A$</span>
+                <span className="text-[18px] font-mono text-muted">{currency.symbol}</span>
                 <input
                   type="text"
-                  inputMode="decimal"
+                  inputMode={isWholeNumberCurrency(currency) ? "numeric" : "decimal"}
                   value={amountStr}
-                  onChange={(e) => setAmountStr(e.target.value.replace(/[^0-9.]/g, ""))}
-                  placeholder="0.00"
+                  onChange={(e) => setAmountStr(sanitizeAmountInput(e.target.value, currency))}
+                  placeholder={isWholeNumberCurrency(currency) ? "0" : `0${decimalSep}00`}
                   autoFocus={!isEditing}
                   className={cn(
                     "flex-1 min-w-0 bg-transparent border-0 outline-none font-mono text-[28px] font-semibold tracking-tight placeholder:text-pale",

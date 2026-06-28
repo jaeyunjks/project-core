@@ -9,6 +9,7 @@ import {
   duplicateMoneyEntry,
   importHoursBoardPeriod,
 } from "@/server/queries/moneyboard";
+import { CURRENCIES, DEFAULT_CURRENCY } from "@/domain/moneyboard";
 
 function revalidateMoneyBoard() {
   revalidatePath("/dashboard/moneyboard");
@@ -27,7 +28,9 @@ function parseEntryForm(formData: FormData) {
   const date = ((formData.get("date") as string) ?? "").trim();
   const categoryId = ((formData.get("categoryId") as string) ?? "").trim();
   const note = ((formData.get("note") as string) ?? "").trim();
-  return { kind, amount, date, categoryId, note };
+  const currencyRaw = ((formData.get("currency") as string) ?? "").trim().toUpperCase();
+  const currency = CURRENCIES.find((c) => c.code === currencyRaw)?.code ?? DEFAULT_CURRENCY.code;
+  return { kind, amount, currency, date, categoryId, note };
 }
 
 function validate({
@@ -58,6 +61,7 @@ export async function createMoneyEntryAction(
     const entry = await createMoneyEntry(user.id, {
       kind: fields.kind as "income" | "expense",
       amount: fields.amount,
+      currency: fields.currency,
       date: fields.date,
       categoryId: fields.categoryId,
       note: fields.note || null,
@@ -87,6 +91,7 @@ export async function updateMoneyEntryAction(
     const entry = await updateMoneyEntry(id, user.id, {
       kind: fields.kind as "income" | "expense",
       amount: fields.amount,
+      currency: fields.currency,
       date: fields.date,
       categoryId: fields.categoryId,
       note: fields.note || null,
