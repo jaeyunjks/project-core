@@ -30,10 +30,17 @@ const LogoutIcon = () => (
   </svg>
 );
 
+const TargetIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" />
+  </svg>
+);
+
 const mobileNav = [
   { href: "/dashboard", label: "Home", icon: <HomeIcon /> },
   { href: "/dashboard/hoursboard", label: "Hours", icon: <ClockIcon /> },
   { href: "/dashboard/moneyboard", label: "Money", icon: <WalletIcon /> },
+  { href: "/dashboard/goals", label: "Goals", icon: <TargetIcon /> },
 ];
 
 // ── Shell ────────────────────────────────────────────────────────────────────

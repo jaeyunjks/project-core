@@ -30,8 +30,8 @@ export const modules: Module[] = [
     id: "goals",
     name: "Goal Tracker",
     description: "Set, track, and hit your goals.",
-    href: "#",
-    status: "coming-soon",
+    href: "/dashboard/goals",
+    status: "active",
     icon: "target",
   },
   {

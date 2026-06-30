@@ -21,6 +21,8 @@ model User {
   awardLevels  AwardLevel[]
   moneyCategories MoneyCategory[]
   moneyEntries    MoneyEntry[]
+  goals           Goal[]
+  goalMilestones  GoalMilestone[]
 }
 
 model Session {
@@ -170,4 +172,52 @@ model MoneyEntry {
   @@index([userId, kind])
   @@index([categoryId])
   @@index([payPeriodId])
+}
+
+// ─── GoalTracker ──────────────────────────────────────────────────────────────
+
+model Goal {
+  id          String          @id @default(cuid())
+  userId      String
+  title       String
+  emoji       String          @default("🎯")
+  // "numeric" — progress is a number toward a target (e.g. save $2000)
+  // "checklist" — progress is completing milestones (e.g. get driver's license)
+  type        String          // "numeric" | "checklist"
+  // "active" | "completed" | "archived"
+  status      String          @default("active")
+  // Numeric goals
+  targetValue Float?          // e.g. 2000
+  currentValue Float          @default(0)
+  unit        String?         // e.g. "$", "hours", "kg"
+  // Auto-link: pull progress from another module
+  // "none" | "moneyboard-income" | "moneyboard-expense" | "moneyboard-net" | "hoursboard-hours"
+  autoSource  String          @default("none")
+  // Optional: currency code for money-linked goals
+  autoCurrency String?
+  // Deadline
+  deadline    String?         // YYYY-MM-DD, nullable for open-ended goals
+  // Metadata
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  completedAt DateTime?
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  milestones  GoalMilestone[]
+
+  @@index([userId, status])
+}
+
+model GoalMilestone {
+  id        String   @id @default(cuid())
+  goalId    String
+  userId    String
+  title     String
+  done      Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  goal      Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
 }

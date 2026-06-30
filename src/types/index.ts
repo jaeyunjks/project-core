@@ -149,5 +149,38 @@ export interface LifetimeMoneyStats {
   net: number;
 }
 
+// ── GoalTracker ─────────────────────────────────────────────────────────────
+
+export interface GoalMilestoneDisplay {
+  id: string;
+  title: string;
+  done: boolean;
+  sortOrder: number;
+}
+
+export interface GoalDisplay {
+  id: string;
+  title: string;
+  emoji: string;
+  type: "numeric" | "checklist";
+  status: "active" | "completed" | "archived";
+  targetValue: number | null;
+  currentValue: number;
+  unit: string | null;
+  autoSource: string;
+  autoCurrency: string | null;
+  deadline: string | null;
+  createdAt: string;            // ISO string
+  completedAt: string | null;   // ISO string
+  milestones: GoalMilestoneDisplay[];
+  progress: number;             // 0–100
+}
+
+export interface GoalTrackerSummary {
+  active: number;
+  completed: number;
+  overdue: number;
+}
+
 // Re-export Prisma types so pages don't need to import from @prisma/client directly
 export type { AwardLevel, Employer };

@@ -55,6 +55,13 @@ const I = {
       <circle cx="12" cy="17" r="0.5" fill="currentColor" />
     </svg>
   ),
+  target: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="4.5" />
+      <circle cx="12" cy="12" r="1.2" />
+    </svg>
+  ),
   logout: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d="M15 17l5-5-5-5M20 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -73,6 +80,7 @@ const primary: NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/dashboard/hoursboard", label: "HoursBoard", icon: "clock" },
   { href: "/dashboard/moneyboard", label: "MoneyBoard", icon: "wallet" },
+  { href: "/dashboard/goals", label: "Goal Tracker", icon: "target" },
 ];
 
 const secondary: NavItem[] = [

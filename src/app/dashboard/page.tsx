@@ -8,6 +8,7 @@ import {
   getLifetimeMoneyStats,
   previewHoursBoardImport,
 } from "@/server/queries/moneyboard";
+import { getGoalTrackerSummary } from "@/server/queries/goaltracker";
 import { currentMonthKey, shiftMonth, formatMoney } from "@/domain/moneyboard";
 import type { DashboardNotification } from "@/components/dashboard/NotificationsMenu";
 import type { DateContext } from "@/components/dashboard/DateMenu";
@@ -78,6 +79,13 @@ const I = {
       <circle cx="12" cy="12" r="3.4" />
     </svg>
   ),
+  targetLg: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1.5" />
+    </svg>
+  ),
   briefcase: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="8" width="18" height="13" rx="2.5" />
@@ -93,12 +101,6 @@ const COMING_SOON = [
     title: "Study",
     description: "Organize your courses, notes & learning goals.",
     icon: I.book,
-  },
-  {
-    id: "goal",
-    title: "Goal",
-    description: "Set goals, track progress & build consistency.",
-    icon: I.target,
   },
   {
     id: "career",
@@ -136,7 +138,7 @@ export default async function DashboardPage() {
   const monthKey = currentMonthKey();
   const prevMonthKey = shiftMonth(monthKey, -1);
 
-  const [employer, latestPeriod, monthData, prevMonthData, lifetime, hbImport] =
+  const [employer, latestPeriod, monthData, prevMonthData, lifetime, hbImport, goalSummary] =
     await Promise.all([
       getCurrentEmployer(),
       getLatestPayPeriod(user.id),
@@ -144,6 +146,7 @@ export default async function DashboardPage() {
       getMonthlyMoneyData(user.id, prevMonthKey, "AUD"),
       getLifetimeMoneyStats(user.id, "AUD"),
       previewHoursBoardImport(user.id),
+      getGoalTrackerSummary(user.id),
     ]);
 
   // ── Derived stats ─────────────────────────────────────────────────────────
@@ -428,6 +431,16 @@ export default async function DashboardPage() {
             { label: "Across all time", value: formatMoney(lifetime.net) },
           ]}
           visual={moneySpark.some((v) => v !== 0) ? <SparklineVisual values={moneySpark} /> : undefined}
+        />
+        <AppCard
+          title="Goal Tracker"
+          description="Set, track, and hit your goals."
+          href="/dashboard/goals"
+          icon={I.targetLg}
+          meta={[
+            { label: "Active goals", value: String(goalSummary.active) },
+            { label: "Completed", value: String(goalSummary.completed) },
+          ]}
         />
       </div>
 
