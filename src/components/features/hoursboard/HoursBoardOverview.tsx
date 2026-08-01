@@ -1,7 +1,31 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useState, useMemo } from "react";
+
+function PeriodLinkPending({ variant = "card" }: { variant?: "card" | "row" }) {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  const radius = variant === "card" ? "rounded-[18px]" : "rounded-[14px]";
+  const size = variant === "card" ? "h-7 w-7 border-[2.5px]" : "h-6 w-6 border-2";
+  return (
+    <div
+      aria-live="polite"
+      aria-label="Opening pay period"
+      className={cn(
+        "absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]",
+        radius
+      )}
+    >
+      <span
+        className={cn(
+          "rounded-full border-sage/25 border-t-sage animate-spin",
+          size
+        )}
+      />
+    </div>
+  );
+}
 import type { PayPeriodDisplay, AwardLevelDisplay } from "@/types";
 import { formatCurrency, formatHours, cn, parseLocalDate, daysBetween, todayStr } from "@/lib/utils";
 import { NewPayPeriodModal } from "./NewPayPeriodModal";
@@ -470,6 +494,7 @@ export function HoursBoardOverview({ periods, latest, activePeriodId, employerId
                 <StatCell label="Days" value={String(latest.summary.workedDays)} />
               </div>
             )}
+            <PeriodLinkPending variant="card" />
           </div>
         </Link>
       ) : (
@@ -562,7 +587,7 @@ export function HoursBoardOverview({ periods, latest, activePeriodId, employerId
                     >
                       <Link
                         href={`/dashboard/hoursboard?period=${p.id}`}
-                        className="flex-1 min-w-0 flex items-center justify-between"
+                        className="relative flex-1 min-w-0 flex items-center justify-between"
                       >
                         <div className="min-w-0 flex-1 mr-3">
                           <div className="flex items-center gap-2">
@@ -611,6 +636,7 @@ export function HoursBoardOverview({ periods, latest, activePeriodId, employerId
                             </>
                           )}
                         </div>
+                        <PeriodLinkPending variant="row" />
                       </Link>
                       <PayPeriodActions period={p} />
                     </div>
