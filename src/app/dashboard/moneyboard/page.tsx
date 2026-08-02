@@ -34,9 +34,11 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
   const anchor = date && VALID_DATE.test(date) ? date : undefined;
   const endOverride = end && VALID_DATE.test(end) ? end : undefined;
 
-  const [categories, budget, bills] = await Promise.all([
+  // Load the budget first — it lazily materializes plan categories — so the
+  // category list picks them up on the same render.
+  const budget = await getBudgetSummary(user.id, periodType, anchor, currency.code, endOverride);
+  const [categories, bills] = await Promise.all([
     getCategories(user.id),
-    getBudgetSummary(user.id, periodType, anchor, currency.code, endOverride),
     getRecurringBills(user.id, currency.code),
   ]);
 

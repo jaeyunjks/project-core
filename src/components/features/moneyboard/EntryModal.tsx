@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useTransition } from "react";
+import { useState, useEffect, useMemo, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { MoneyCategoryDisplay, MoneyEntryDisplay } from "@/types";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,12 @@ interface Props {
   initialKind?: "income" | "expense";
   /** Currency to use for a NEW entry (the page's active currency view) */
   defaultCurrency?: CurrencyOption;
+  /** Per-category remaining budget, keyed by categoryId — drives the "comes from" hint. */
+  categoryBudgetHints?: Record<string, { name: string; remaining: number }>;
+  /** Flexible pool remaining — used when the picked category has no budget. */
+  leftToSpend?: number;
+  /** When set, the expense category list is limited to these plan categories (+ "Other"). */
+  planCategoryIds?: string[];
 }
 
 function lookupCurrency(code: string | undefined): CurrencyOption {
@@ -47,6 +53,9 @@ export function EntryModal({
   editEntry,
   initialKind = "expense",
   defaultCurrency = DEFAULT_CURRENCY,
+  categoryBudgetHints,
+  leftToSpend,
+  planCategoryIds,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -74,6 +83,8 @@ export function EntryModal({
   const [categoryId, setCategoryId] = useState<string>("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [catOpen, setCatOpen] = useState(false);
+  const catWrapRef = useRef<HTMLDivElement>(null);
 
   // Reset on open
   useEffect(() => {
@@ -92,13 +103,29 @@ export function EntryModal({
       setNote("");
     }
     setError(null);
+    setCatOpen(false);
   }, [open, editEntry, initialKind]);
 
-  // Categories filtered by current kind
-  const visibleCats = useMemo(
-    () => categories.filter((c) => c.kind === kind),
-    [categories, kind]
-  );
+  // Close the category dropdown on outside click / Escape
+  useEffect(() => {
+    if (!catOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (catWrapRef.current && !catWrapRef.current.contains(e.target as Node)) setCatOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [catOpen]);
+
+  // Categories filtered by current kind. For expenses, when the plan has
+  // category budgets, limit the picker to those plan categories (+ "Other").
+  const visibleCats = useMemo(() => {
+    const all = categories.filter((c) => c.kind === kind);
+    if (kind !== "expense" || !planCategoryIds || planCategoryIds.length === 0) return all;
+    const allow = new Set(planCategoryIds);
+    return all.filter(
+      (c) => allow.has(c.id) || c.key === "expense_other" || c.label.trim().toLowerCase() === "other"
+    );
+  }, [categories, kind, planCategoryIds]);
 
   // Reset category if switching kind makes the selection invalid
   useEffect(() => {
@@ -263,33 +290,141 @@ export function EntryModal({
               <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.16em] text-faint mb-2">
                 Category
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {visibleCats.map((c) => {
-                  const selected = c.id === categoryId;
+              <div className="relative" ref={catWrapRef}>
+                {(() => {
+                  const selectedCat = visibleCats.find((c) => c.id === categoryId);
                   return (
                     <button
-                      key={c.id}
                       type="button"
-                      onClick={() => setCategoryId(c.id)}
+                      onClick={() => setCatOpen((v) => !v)}
+                      aria-haspopup="listbox"
+                      aria-expanded={catOpen}
                       className={cn(
-                        "rounded-[10px] px-3 py-3 flex flex-col items-start gap-1.5 border transition-colors text-left",
-                        selected
-                          ? "text-paper border-transparent"
-                          : "bg-white text-ink border-border hover:border-sage/40"
+                        "w-full h-12 pl-2 pr-3 rounded-[12px] border bg-white flex items-center justify-between gap-2 text-left transition-colors",
+                        catOpen ? "border-sage ring-[3px] ring-sage/10" : "border-border-soft hover:border-sage/40"
                       )}
-                      style={selected ? { backgroundColor: c.color } : undefined}
                     >
-                      <CategoryIcon
-                        icon={c.icon}
-                        size={15}
-                        color={selected ? "currentColor" : c.color}
-                      />
-                      <span className="text-[12px] font-medium">{c.label}</span>
+                      {selectedCat ? (
+                        <span className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: selectedCat.color + "1F" }}
+                          >
+                            <CategoryIcon icon={selectedCat.icon} size={16} color={selectedCat.color} />
+                          </span>
+                          <span className="text-[14px] font-semibold text-ink truncate">{selectedCat.label}</span>
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-2.5">
+                          <span className="w-8 h-8 rounded-full bg-[#EFE9DC] flex items-center justify-center shrink-0 text-faint">
+                            <CategoryIcon icon="tag" size={16} color="currentColor" />
+                          </span>
+                          <span className="text-[14px] text-pale">Select category</span>
+                        </span>
+                      )}
+                      <svg
+                        width="10"
+                        height="6"
+                        viewBox="0 0 10 6"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-faint shrink-0"
+                        style={{ transition: "transform 0.15s", transform: `rotate(${catOpen ? 180 : 0}deg)` }}
+                      >
+                        <path d="M1 1L5 5L9 1" />
+                      </svg>
                     </button>
                   );
-                })}
+                })()}
+                {catOpen && (
+                  <div
+                    role="listbox"
+                    className="absolute z-10 top-[calc(100%+6px)] left-0 right-0 max-h-64 overflow-y-auto bg-white rounded-[14px] border border-border-soft shadow-lg p-1.5"
+                  >
+                    {visibleCats.map((c) => {
+                      const selected = c.id === categoryId;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          onClick={() => {
+                            setCategoryId(c.id);
+                            setCatOpen(false);
+                          }}
+                          className={cn(
+                            "w-full flex items-center gap-2.5 pl-2 pr-2.5 py-2 rounded-[10px] text-left transition-colors",
+                            selected ? "bg-sage/10" : "hover:bg-paper"
+                          )}
+                        >
+                          <span
+                            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: c.color + "1F" }}
+                          >
+                            <CategoryIcon icon={c.icon} size={16} color={c.color} />
+                          </span>
+                          <span
+                            className={cn(
+                              "text-[14px] flex-1 truncate",
+                              selected ? "font-semibold text-ink" : "font-medium text-ink"
+                            )}
+                          >
+                            {c.label}
+                          </span>
+                          {selected && (
+                            <svg
+                              width="15"
+                              height="15"
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="text-sage shrink-0"
+                            >
+                              <path d="M4 10.5l4 4 8-9" />
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Budget impact hint */}
+            {isExpense && categoryId && (() => {
+              const hint = categoryBudgetHints?.[categoryId];
+              const base = hint ? hint.remaining : (leftToSpend ?? 0);
+              const label = hint ? `${hint.name} budget` : "Left to spend";
+              const after = base - (validAmount ? amountNum : 0);
+              return (
+                <div className="px-4 py-3 rounded-[12px] bg-[#EFE9DC] border border-border-soft text-[12.5px] text-muted">
+                  Comes from your <span className="font-semibold text-ink">{label}</span> ·{" "}
+                  <span className="font-mono">{formatMoney(base, { currency })}</span> left
+                  {validAmount && (
+                    <>
+                      {" "}→{" "}
+                      <span
+                        className={cn(
+                          "font-mono font-semibold",
+                          after < 0 ? "text-[#8A3F2E]" : "text-sage"
+                        )}
+                      >
+                        {formatMoney(after, { currency })}
+                      </span>{" "}
+                      after
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Note */}
             <div className="bg-white border border-border-soft rounded-[12px] px-4 py-3">

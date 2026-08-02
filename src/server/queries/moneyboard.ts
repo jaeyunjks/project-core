@@ -9,6 +9,7 @@ import {
   periodWindow,
   customPeriodWindow,
   periodDayCounts,
+  guessCategoryIcon,
   DEFAULT_CATEGORIES,
 } from "@/domain/moneyboard";
 import type { BudgetPeriodType, PeriodWindow } from "@/domain/moneyboard";
@@ -22,6 +23,7 @@ import type {
   LifetimeMoneyStats,
   BudgetPeriodDisplay,
   BudgetCategorySegment,
+  CategoryBudgetRow,
   CommittedItemDisplay,
   RecurringBillDisplay,
 } from "@/types";
@@ -552,18 +554,53 @@ function ordinalDay(n: number): string {
   return n + (DAY_SUFFIX[(v - 20) % 10] || DAY_SUFFIX[v] || DAY_SUFFIX[0]);
 }
 
-/** True when a monthly bill's dueDay lands somewhere in [start, end] inclusive. */
-function monthlyBillHitsWindow(dueDay: number, start: string, end: string): boolean {
+// Colours assigned to auto-created plan categories, cycled by sort order.
+const CATEGORY_PALETTE = [
+  "#2D4A2E", "#5A6A3A", "#B59A6F", "#4F6B5E", "#8A6A3F", "#4A5B7A", "#7A4A6B", "#8F8772",
+];
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "cat";
+}
+
+function fmtDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** The YYYY-MM-DD of a monthly due-day within [start, end], or null if absent. */
+function monthlyDueDateInWindow(dueDay: number, start: string, end: string): string | null {
   const [ys, ms, ds] = start.split("-").map(Number);
   const [ye, me, de] = end.split("-").map(Number);
-  const startDate = new Date(ys, ms - 1, ds);
+  const cursor = new Date(ys, ms - 1, ds);
   const endDate = new Date(ye, me - 1, de);
-  const cursor = new Date(startDate);
   while (cursor <= endDate) {
-    if (cursor.getDate() === dueDay) return true;
+    if (cursor.getDate() === dueDay) return fmtDate(cursor);
     cursor.setDate(cursor.getDate() + 1);
   }
-  return false;
+  return null;
+}
+
+/** True when a monthly bill's dueDay lands somewhere in [start, end] inclusive. */
+function monthlyBillHitsWindow(dueDay: number, start: string, end: string): boolean {
+  return monthlyDueDateInWindow(dueDay, start, end) !== null;
+}
+
+/**
+ * Whether a bill counts as already paid within [start, end].
+ * Weekly / fortnightly (and monthly without a due day) have no exact date, so
+ * they're considered paid as soon as the plan covers them. A monthly bill with
+ * a due day is paid only once that date has arrived.
+ */
+function billPaidForWindow(
+  bill: { cadence: string; dueDay: number | null },
+  start: string,
+  end: string,
+  today: string,
+): boolean {
+  if (bill.cadence !== "month") return true;
+  if (bill.dueDay == null) return true;
+  const due = monthlyDueDateInWindow(bill.dueDay, start, end);
+  if (!due) return false;
+  return due <= today;
 }
 
 type BudgetWithItems = Prisma.BudgetPeriodGetPayload<{
@@ -661,14 +698,8 @@ export async function getBudgetSummary(
 
   const spent = expenses.reduce((s, e) => s + e.amount, 0);
   const plannedSpendable = moneyIn - protectValue - committedTotal;
-  const leftToSpend = plannedSpendable - spent;
-  const perDay = counts.daysLeft > 0
-    ? Math.max(0, leftToSpend) / counts.daysLeft
-    : Math.max(0, leftToSpend);
-  const progressPercent = plannedSpendable > 0
-    ? Math.max(0, Math.min(100, Math.round((spent / plannedSpendable) * 100)))
-    : 0;
 
+  // Per-category spend map (feeds both the segment bar and category budgets).
   const byCat = new Map<string, BudgetCategorySegment>();
   for (const e of expenses) {
     const existing = byCat.get(e.category.id);
@@ -692,6 +723,118 @@ export async function getBudgetSummary(
     }))
     .sort((a, b) => b.amount - a.amount);
 
+  // Category budgets — committed items whose name matches a spending category,
+  // drawn down by actual spend in that category (e.g. Food $80 − $10 = $70).
+  const expenseCats = await db.moneyCategory.findMany({
+    where: { userId, kind: "expense" },
+  });
+  const catByLabel = new Map<string, { id: string; color: string }>();
+  for (const c of expenseCats) catByLabel.set(c.label.trim().toLowerCase(), { id: c.id, color: c.color });
+
+  // Backfill a meaningful icon for previously auto-created plan categories that
+  // still carry the generic placeholder ("dots"). Leaves "Other" alone.
+  for (const c of expenseCats) {
+    if (c.icon === "dots" && c.label.trim().toLowerCase() !== "other") {
+      await db.moneyCategory.update({ where: { id: c.id }, data: { icon: guessCategoryIcon(c.label) } });
+    }
+  }
+
+  // Materialize a real expense category for every SAVED plan item that doesn't
+  // have one yet — so plan categories reflect in the drawdown + Add-spend picker
+  // even for plans saved before this behaviour existed. Idempotent.
+  let maxSort = expenseCats.reduce((m, c) => Math.max(m, c.sortOrder), -1);
+  for (const it of savedItems) {
+    const baseName = it.name.split(" · ")[0].trim();
+    if (!baseName || baseName === "Item") continue;
+    const key = baseName.toLowerCase();
+    if (catByLabel.has(key)) continue;
+    maxSort += 1;
+    const created = await db.moneyCategory.create({
+      data: {
+        userId,
+        key: `${slugify(baseName)}-${Math.random().toString(36).slice(2, 7)}`,
+        label: baseName,
+        kind: "expense",
+        color: CATEGORY_PALETTE[maxSort % CATEGORY_PALETTE.length],
+        icon: guessCategoryIcon(baseName),
+        sortOrder: maxSort,
+      },
+    });
+    catByLabel.set(key, { id: created.id, color: created.color });
+  }
+
+  const spentByCatId = new Map<string, number>();
+  for (const seg of byCat.values()) spentByCatId.set(seg.categoryId, seg.amount);
+
+  // Auto-count applicable bills as "paid" spend in their category, so the bar
+  // fills without a manual entry. Weekly/fortnightly (no exact date) pay
+  // immediately; monthly with a due day pays once that date has arrived.
+  const today = fmtDate(new Date());
+  const billByBase = new Map<string, (typeof activeBills)[number]>();
+  for (const b of activeBills) billByBase.set(b.name.trim().toLowerCase(), b);
+  const billPaidByCatId = new Map<string, number>();
+  let billPaidTotal = 0;
+  for (const it of savedItems) {
+    const baseName = it.name.split(" · ")[0].trim();
+    const bill = billByBase.get(baseName.toLowerCase());
+    if (!bill) continue;
+    if (!billPaidForWindow(bill, win.startDate, win.endDate, today)) continue;
+    const cat = catByLabel.get(baseName.toLowerCase());
+    if (!cat) continue;
+    const amt = Number(it.amount) || 0;
+    spentByCatId.set(cat.id, (spentByCatId.get(cat.id) ?? 0) + amt);
+    billPaidByCatId.set(cat.id, (billPaidByCatId.get(cat.id) ?? 0) + amt);
+    billPaidTotal += amt;
+  }
+
+  // Sum committed-item allocations per matched category (dedupe by category).
+  const allocMap = new Map<string, { name: string; color: string; budgeted: number }>();
+  for (const it of committedItems) {
+    // Strip any " · suffix" (e.g. a monthly bill's due-day tag) before matching.
+    const baseName = it.name.split(" · ")[0].trim();
+    const match = catByLabel.get(baseName.toLowerCase());
+    if (!match) continue;
+    const prev = allocMap.get(match.id);
+    if (prev) prev.budgeted += Number(it.amount) || 0;
+    else allocMap.set(match.id, { name: baseName, color: match.color, budgeted: Number(it.amount) || 0 });
+  }
+  const allocatedCategoryIds = new Set(allocMap.keys());
+  const categoryBudgets: CategoryBudgetRow[] = [...allocMap.entries()].map(([catId, a]) => {
+    const budgeted = Math.round(a.budgeted * 100) / 100;
+    const catSpent = Math.round((spentByCatId.get(catId) ?? 0) * 100) / 100;
+    const billPaid = Math.round((billPaidByCatId.get(catId) ?? 0) * 100) / 100;
+    return {
+      key: catId,
+      name: a.name,
+      categoryId: catId,
+      color: a.color,
+      budgeted,
+      spent: catSpent,
+      remaining: Math.round((budgeted - catSpent) * 100) / 100,
+      percentUsed: budgeted > 0 ? Math.max(0, Math.min(100, Math.round((catSpent / budgeted) * 100))) : 0,
+      overBudget: catSpent > budgeted,
+      paid: budgeted > 0 && billPaid >= budgeted - 0.005,
+    };
+  });
+
+  // Spending split: expenses in an allocated category draw down that category's
+  // budget; everything else (Other / unallocated) draws the flexible pool.
+  let unplannedSpentRaw = 0;
+  for (const e of expenses) {
+    if (!allocatedCategoryIds.has(e.category.id)) unplannedSpentRaw += e.amount;
+  }
+  const unplannedSpent = Math.round(unplannedSpentRaw * 100) / 100;
+  const plannedSpent = Math.round((spent - unplannedSpentRaw + billPaidTotal) * 100) / 100;
+  const totalSpent = Math.round((spent + billPaidTotal) * 100) / 100;
+
+  const leftToSpend = Math.round((plannedSpendable - unplannedSpentRaw) * 100) / 100;
+  const perDay = counts.daysLeft > 0
+    ? Math.max(0, leftToSpend) / counts.daysLeft
+    : Math.max(0, leftToSpend);
+  const progressPercent = plannedSpendable > 0
+    ? Math.max(0, Math.min(100, Math.round((unplannedSpentRaw / plannedSpendable) * 100)))
+    : 0;
+
   return {
     id: plan?.id ?? null,
     periodType,
@@ -710,11 +853,14 @@ export async function getBudgetSummary(
     committedTotal: Math.round(committedTotal * 100) / 100,
     committedItems,
     plannedSpendable: Math.round(plannedSpendable * 100) / 100,
-    spent: Math.round(spent * 100) / 100,
-    leftToSpend: Math.round(leftToSpend * 100) / 100,
+    spent: totalSpent,
+    plannedSpent,
+    unplannedSpent,
+    leftToSpend,
     perDay: Math.round(perDay * 100) / 100,
     progressPercent,
     categorySegments,
+    categoryBudgets,
     recentEntries: expenses.slice(0, RECENT_ENTRIES_LIMIT),
   };
 }
@@ -765,6 +911,31 @@ export async function saveBudgetPlan(userId: string, input: SaveBudgetPlanInput)
         protectValue: Math.max(0, Number(input.protectValue) || 0),
       },
     });
+
+    // Ensure each plan category exists as a real expense category, so it shows
+    // up everywhere — the drawdown bars AND the Add-spend picker.
+    const existingCats = await tx.moneyCategory.findMany({ where: { userId, kind: "expense" } });
+    const byLabel = new Map(existingCats.map((c) => [c.label.trim().toLowerCase(), c]));
+    let maxSort = existingCats.reduce((m, c) => Math.max(m, c.sortOrder), -1);
+    for (const it of cleanedItems) {
+      const baseName = it.name.split(" · ")[0].trim();
+      if (!baseName || baseName === "Item") continue;
+      const key = baseName.toLowerCase();
+      if (byLabel.has(key)) continue;
+      maxSort += 1;
+      const created = await tx.moneyCategory.create({
+        data: {
+          userId,
+          key: `${slugify(baseName)}-${Math.random().toString(36).slice(2, 7)}`,
+          label: baseName,
+          kind: "expense",
+          color: CATEGORY_PALETTE[maxSort % CATEGORY_PALETTE.length],
+          icon: guessCategoryIcon(baseName),
+          sortOrder: maxSort,
+        },
+      });
+      byLabel.set(key, created);
+    }
 
     await tx.committedItem.deleteMany({ where: { budgetPeriodId: plan.id } });
     if (cleanedItems.length > 0) {

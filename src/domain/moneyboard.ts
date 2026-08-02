@@ -12,7 +12,40 @@ export type CategoryIconKey =
   | "bolt"
   | "play"
   | "circle-plus"
-  | "dots";
+  | "dots"
+  | "cart"
+  | "bag"
+  | "book"
+  | "shield"
+  | "car"
+  | "heart"
+  | "sparkle"
+  | "coffee"
+  | "gift"
+  | "tag";
+
+/** Best-effort icon for a category based on its name. */
+export function guessCategoryIcon(name: string): CategoryIconKey {
+  const n = name.toLowerCase();
+  const has = (...ks: string[]) => ks.some((k) => n.includes(k));
+  if (has("grocer", "supermarket", "market", "woolworth", "coles", "aldi")) return "cart";
+  if (has("food", "eat", "restaurant", "dining", "lunch", "dinner", "meal", "snack")) return "utensils";
+  if (has("coffee", "cafe", "tea")) return "coffee";
+  if (has("shop", "cloth", "fashion", "apparel", "retail")) return "bag";
+  if (has("educat", "school", "study", "tuition", "course", "book", "learn", "univers", "college", "tutor")) return "book";
+  if (has("makeup", "beauty", "cosmetic", "skincare", "salon", "hair", "nail")) return "sparkle";
+  if (has("insur", "cover")) return "shield";
+  if (has("save", "saving", "protect", "emergency")) return "shield";
+  if (has("rent", "home", "house", "mortgage", "housing", "accom")) return "home";
+  if (has("transport", "car", "fuel", "petrol", "gas ", "uber", "taxi", "bus", "train", "opal", "commut", "parking")) return "car";
+  if (has("health", "medical", "doctor", "pharmacy", "gym", "fitness", "sport", "dental")) return "heart";
+  if (has("entertain", "movie", "cinema", "game", "music", "concert")) return "play";
+  if (has("subscri", "netflix", "spotify", "claude", "software", "app ", "membership")) return "play";
+  if (has("util", "electric", "water", "power", "energy", "internet", "phone", "mobile", "bill")) return "bolt";
+  if (has("gift", "present", "donat", "charity")) return "gift";
+  if (has("work", "salary", "job", "freelance", "income", "wage")) return "briefcase";
+  return "tag";
+}
 
 // ── Default categories — match the design brief ──────────────────────────────
 

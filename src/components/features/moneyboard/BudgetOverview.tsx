@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { BudgetPeriodDisplay, MoneyCategoryDisplay, RecurringBillDisplay } from "@/types";
 import type { BudgetPeriodType, CurrencyOption } from "@/domain/moneyboard";
 import { cn, parseLocalDate } from "@/lib/utils";
@@ -24,6 +24,7 @@ import { EntryModal } from "./EntryModal";
 import { CategoryIcon } from "./CategoryIcon";
 import { PlanBudgetSheet } from "./PlanBudgetSheet";
 import { BillPlanningModal } from "./BillPlanningModal";
+import { deleteMoneyEntryAction } from "@/server/actions/moneyboard";
 
 interface Props {
   budget: BudgetPeriodDisplay;
@@ -38,9 +39,21 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [planOpen, setPlanOpen] = useState(false);
-  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [spendOpen, setSpendOpen] = useState(false);
   const [billsOpen, setBillsOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [, startDelete] = useTransition();
+
+  const deleteEntry = (id: string) => {
+    setDeletingId(id);
+    const fd = new FormData();
+    fd.set("id", id);
+    startDelete(async () => {
+      await deleteMoneyEntryAction(fd);
+      router.refresh();
+      setDeletingId(null);
+    });
+  };
 
   const setCurrency = (c: CurrencyOption) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -97,33 +110,35 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
   return (
     <div className="md:grid md:grid-cols-5 md:gap-6">
       <div className="md:col-span-3 flex flex-col pb-4 md:pb-0">
-        {/* Period + currency pills */}
+        {/* Row 1 — selectors */}
         <div className="flex items-center gap-2 mb-3">
+          <CurrencySelector currency={currency} onChange={setCurrency} />
           <PeriodDropdown value={budget.periodType} onChange={setPeriodType} />
-          <div className="ml-auto">
-            <CurrencySelector currency={currency} onChange={setCurrency} />
-          </div>
         </div>
 
-        {/* Custom start + end date pickers */}
-        <div className="flex flex-wrap items-end gap-3 mb-4">
-          <DateField label="Start" value={budget.startDate} onChange={setStartDate} />
+        {/* Row 2 — date range */}
+        <div className="flex items-end gap-2 mb-4">
+          <DateField label="Start" value={budget.startDate} onChange={setStartDate} className="w-[150px]" />
+          <span className="h-9 flex items-center text-muted text-[13px] shrink-0">→</span>
           <DateField
             label="End"
             value={budget.endDate}
             min={budget.startDate}
             onChange={setEndDate}
+            className="w-[150px]"
           />
-          {isCustomEnd && (
+        </div>
+        {isCustomEnd && (
+          <div className="-mt-2 mb-4">
             <button
               type="button"
               onClick={() => navToAnchor(budget.startDate)}
-              className="h-9 px-3 rounded-full bg-sage/10 text-sage text-[11.5px] font-semibold hover:bg-sage/15"
+              className="h-8 px-3 rounded-full bg-sage/10 text-sage text-[11.5px] font-semibold hover:bg-sage/15"
             >
               Reset to {PERIOD_LABEL[budget.periodType].toLowerCase()}
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Hero card */}
         <div className="bg-white border border-border-soft rounded-[18px] p-5 md:p-6 shadow-card">
@@ -170,6 +185,12 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
             />
           </div>
           <div className="text-[12.5px] text-muted mt-2">{perDayLabel}</div>
+          {budget.categoryBudgets.length > 0 && (
+            <div className="text-[11.5px] text-faint mt-1">
+              Flexible pool · {budget.categoryBudgets.length} category budget
+              {budget.categoryBudgets.length === 1 ? "" : "s"} tracked separately below
+            </div>
+          )}
 
           {/* Committed items breakdown — collapsible, visible once a plan is saved */}
           {budget.hasPlan && budget.committedItems.length > 0 && (
@@ -223,59 +244,6 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
                 </div>
               )}
             </div>
-          )}
-
-          {/* Category segments */}
-          {budget.categorySegments.length > 0 && (
-            <>
-              <div className="flex gap-[2px] h-1.5 rounded-full overflow-hidden mt-4">
-                {budget.categorySegments.map((seg) => (
-                  <div
-                    key={seg.categoryId}
-                    title={`${seg.label} ${seg.percent}%`}
-                    style={{ width: `${seg.percent}%`, background: seg.color }}
-                  />
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => setBreakdownOpen((v) => !v)}
-                className="mt-2 flex items-center gap-1 text-[12.5px] font-semibold text-muted hover:text-ink"
-                aria-expanded={breakdownOpen}
-              >
-                Breakdown
-                <svg
-                  width="9"
-                  height="6"
-                  viewBox="0 0 10 6"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ transition: "transform 0.15s", transform: `rotate(${breakdownOpen ? 180 : 0}deg)` }}
-                >
-                  <path d="M1 1L5 5L9 1" />
-                </svg>
-              </button>
-              {breakdownOpen && (
-                <div className="flex flex-col gap-3 mt-3">
-                  {budget.categorySegments.map((seg) => (
-                    <div key={seg.categoryId}>
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-[13px] font-medium text-ink/80">{seg.label}</span>
-                        <span className="text-[12px] text-muted font-mono">
-                          {formatMoney(seg.amount, { currency })} · {seg.percent}%
-                        </span>
-                      </div>
-                      <div className="h-[3px] rounded-full bg-paper overflow-hidden mt-1.5">
-                        <div className="h-full rounded-full" style={{ width: `${seg.percent}%`, background: seg.color }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
           )}
 
           <div className="h-px bg-border-soft my-5" />
@@ -334,6 +302,58 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
           <ActionBtn label="Insights" icon={<BarsIcon />} onClick={() => { /* future */ }} />
         </div>
 
+        {/* Category budgets — drawdown bar chart */}
+        {budget.categoryBudgets.length > 0 && (
+          <div className="mt-8">
+            <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-faint mb-3">
+              Category budgets
+            </div>
+            <div className="bg-white border border-border-soft rounded-[16px] shadow-card p-4 md:p-5 flex flex-col gap-4">
+              {budget.categoryBudgets.map((b) => (
+                <div key={b.key}>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-[13.5px] font-medium text-ink">{b.name}</span>
+                      {b.paid && (
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-sage bg-sage/10 px-1.5 py-0.5 rounded-full">
+                          Paid
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[12.5px] font-mono text-muted tabular-nums">
+                      {formatMoney(b.spent, { currency })} / {formatMoney(b.budgeted, { currency })}
+                    </span>
+                  </div>
+                  <div className="h-2.5 rounded-full bg-paper overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-[width] duration-300"
+                      style={{
+                        width: `${b.percentUsed}%`,
+                        background: b.overBudget ? "#8A3F2E" : b.color,
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span
+                      className={cn(
+                        "text-[12px] font-mono font-semibold tabular-nums",
+                        b.overBudget ? "text-[#8A3F2E]" : b.paid ? "text-faint" : "text-sage",
+                      )}
+                    >
+                      {b.overBudget
+                        ? `${formatMoney(Math.abs(b.remaining), { currency })} over`
+                        : b.paid
+                          ? "Fully paid"
+                          : `${formatMoney(b.remaining, { currency })} left`}
+                    </span>
+                    <span className="text-[11px] font-mono text-faint">{b.percentUsed}% used</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Recent entries */}
         <div className="mt-8">
           <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-faint mb-3">
@@ -372,9 +392,22 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
                       </div>
                     </div>
                   </div>
-                  <span className="text-[14.5px] font-mono font-semibold text-ink tabular-nums">
-                    −{formatMoney(e.amount, { currency })}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[14.5px] font-mono font-semibold text-ink tabular-nums">
+                      −{formatMoney(e.amount, { currency })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => deleteEntry(e.id)}
+                      disabled={deletingId === e.id}
+                      aria-label={`Delete ${e.note?.trim() || e.category.label}`}
+                      className="w-7 h-7 rounded-full text-pale hover:text-[#8A3F2E] hover:bg-[#8A3F2E]/8 flex items-center justify-center transition-colors disabled:opacity-40"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 5h14M8 5V3h4v2M6 5l1 12h6l1-12" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -410,6 +443,11 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
         categories={categories}
         initialKind="expense"
         defaultCurrency={currency}
+        categoryBudgetHints={Object.fromEntries(
+          budget.categoryBudgets.map((b) => [b.categoryId, { name: b.name, remaining: b.remaining }]),
+        )}
+        leftToSpend={budget.leftToSpend}
+        planCategoryIds={budget.categoryBudgets.map((b) => b.categoryId)}
       />
     </div>
   );
@@ -511,14 +549,16 @@ function DateField({
   value,
   min,
   onChange,
+  className,
 }: {
   label: string;
   value: string;
   min?: string;
   onChange: (v: string) => void;
+  className?: string;
 }) {
   return (
-    <label className="flex flex-col gap-1">
+    <label className={cn("flex flex-col gap-1", className)}>
       <span className="text-[10px] font-semibold font-mono uppercase tracking-[0.14em] text-faint">
         {label}
       </span>
@@ -527,7 +567,7 @@ function DateField({
         value={value}
         min={min}
         onChange={(e) => onChange(e.target.value)}
-        className="h-9 px-2.5 rounded-[10px] bg-white border border-border-soft text-[13px] font-medium text-ink font-mono outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all"
+        className="h-9 w-full px-2.5 rounded-[10px] bg-white border border-border-soft shadow-sm text-[13px] font-medium text-ink font-mono outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all"
       />
     </label>
   );
@@ -566,7 +606,7 @@ function PeriodDropdown({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="h-11 pl-4 pr-3 rounded-full bg-white border border-border-soft shadow-card text-[13px] font-semibold text-ink flex items-center gap-2 hover:border-sage/40 transition-colors"
+        className="h-9 pl-3.5 pr-2.5 rounded-full bg-white border border-border-soft shadow-sm text-[12px] font-semibold text-ink flex items-center gap-2 hover:border-sage/40 transition-colors"
       >
         <span>{PERIOD_LABEL[value]}</span>
         <svg

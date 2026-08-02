@@ -184,6 +184,23 @@ export interface BudgetCategorySegment {
   percent: number;  // 0..100 of total spend
 }
 
+/**
+ * A committed item that maps to a spending category, drawn down by actual
+ * spend in that category. e.g. "Food" budgeted $80, spent $10 → $70 remaining.
+ */
+export interface CategoryBudgetRow {
+  key: string;              // committed item id
+  name: string;             // committed item / category name
+  categoryId: string;       // matched category
+  color: string;
+  budgeted: number;
+  spent: number;
+  remaining: number;        // budgeted − spent (can be negative)
+  percentUsed: number;      // 0..100, clamped for the bar
+  overBudget: boolean;
+  paid: boolean;            // fully covered by an auto-paid recurring bill
+}
+
 export interface BudgetPeriodDisplay {
   id: string | null;          // null when no plan saved yet for this window
   periodType: BudgetPeriodType;
@@ -201,12 +218,15 @@ export interface BudgetPeriodDisplay {
   protectValue: number;
   committedTotal: number;     // sum of committed items amount
   committedItems: CommittedItemDisplay[];
-  plannedSpendable: number;   // moneyIn − protect − committedTotal (can be negative)
-  spent: number;              // period expenses (excluding committed already booked)
-  leftToSpend: number;        // plannedSpendable − spent
+  plannedSpendable: number;   // moneyIn − protect − committedTotal — the flexible pool
+  spent: number;              // all period expenses
+  plannedSpent: number;       // spend in allocated categories (draws category budgets)
+  unplannedSpent: number;     // spend in unallocated categories (draws the flexible pool)
+  leftToSpend: number;        // plannedSpendable − unplannedSpent (flexible balance)
   perDay: number;             // leftToSpend / max(daysLeft, 1)
-  progressPercent: number;    // 0..100 (spent / plannedSpendable)
+  progressPercent: number;    // 0..100 (unplannedSpent / plannedSpendable)
   categorySegments: BudgetCategorySegment[];
+  categoryBudgets: CategoryBudgetRow[]; // committed items matched to categories, with drawdown
   recentEntries: MoneyEntryDisplay[];  // most recent period expenses (up to N)
 }
 
