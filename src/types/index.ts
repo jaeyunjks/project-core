@@ -149,6 +149,65 @@ export interface LifetimeMoneyStats {
   net: number;
 }
 
+// ── Recurring bills / subscriptions ─────────────────────────────────────────
+
+export interface RecurringBillDisplay {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  cadence: "week" | "fortnight" | "month";
+  active: boolean;
+  sortOrder: number;
+}
+
+// ── Fortnight-budget planner ────────────────────────────────────────────────
+
+export type BudgetPeriodType = "week" | "fortnight" | "month";
+
+export interface CommittedItemDisplay {
+  id: string;
+  name: string;
+  amount: number;
+  recur: string;
+  sortOrder: number;
+}
+
+/** Category slice on the segmented bar under the hero. */
+export interface BudgetCategorySegment {
+  categoryId: string;
+  label: string;
+  color: string;
+  amount: number;   // absolute spend within the period
+  percent: number;  // 0..100 of total spend
+}
+
+export interface BudgetPeriodDisplay {
+  id: string | null;          // null when no plan saved yet for this window
+  periodType: BudgetPeriodType;
+  startDate: string;
+  endDate: string;
+  currency: string;
+  rangeLabel: string;         // "1–14 Aug"
+  heroLabel: string;          // "THIS FORTNIGHT" / "THIS MONTH" / "THIS WEEK"
+  daysTotal: number;
+  daysElapsed: number;        // clamped to daysTotal
+  daysLeft: number;           // may be 0 when period has ended
+  isFuture: boolean;
+  hasPlan: boolean;
+  moneyIn: number;
+  protectValue: number;
+  committedTotal: number;     // sum of committed items amount
+  committedItems: CommittedItemDisplay[];
+  plannedSpendable: number;   // moneyIn − protect − committedTotal (can be negative)
+  spent: number;              // period expenses (excluding committed already booked)
+  leftToSpend: number;        // plannedSpendable − spent
+  perDay: number;             // leftToSpend / max(daysLeft, 1)
+  progressPercent: number;    // 0..100 (spent / plannedSpendable)
+  categorySegments: BudgetCategorySegment[];
+  recentEntries: MoneyEntryDisplay[];  // most recent period expenses (up to N)
+}
+
 // ── GoalTracker ─────────────────────────────────────────────────────────────
 
 export interface GoalMilestoneDisplay {

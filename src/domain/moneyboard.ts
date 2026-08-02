@@ -157,6 +157,127 @@ export function formatDateRange(startStr: string, endStr: string): string {
   return `${s.getDate()} ${months[s.getMonth()]} – ${e.getDate()} ${months[e.getMonth()]}`;
 }
 
+// ── Unified period window (week / fortnight / month) ────────────────────────
+
+export type BudgetPeriodType = "week" | "fortnight" | "month";
+
+export interface PeriodWindow {
+  periodType: BudgetPeriodType;
+  startDate: string; // YYYY-MM-DD inclusive
+  endDate: string;   // YYYY-MM-DD inclusive
+  rangeLabel: string;
+  heroLabel: string;
+}
+
+const HERO_LABELS: Record<BudgetPeriodType, string> = {
+  week: "THIS WEEK",
+  fortnight: "THIS FORTNIGHT",
+  month: "THIS MONTH",
+};
+
+function monthLabelLong(monthKey: string): string {
+  const [y, m] = monthKey.split("-").map(Number);
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${months[m - 1]} ${y}`;
+}
+
+/** Build a period window from an anchor date (YYYY-MM-DD, defaults to today). */
+export function periodWindow(periodType: BudgetPeriodType, anchor?: string): PeriodWindow {
+  const anchorDate = anchor ?? todayDateStr();
+  if (periodType === "week") {
+    const { start, end } = weekRange(anchorDate);
+    return {
+      periodType,
+      startDate: start,
+      endDate: end,
+      rangeLabel: formatDateRange(start, end),
+      heroLabel: HERO_LABELS.week,
+    };
+  }
+  if (periodType === "fortnight") {
+    const { start, end } = fortnightRange(anchorDate);
+    return {
+      periodType,
+      startDate: start,
+      endDate: end,
+      rangeLabel: formatDateRange(start, end),
+      heroLabel: HERO_LABELS.fortnight,
+    };
+  }
+  const mk = anchorDate.slice(0, 7);
+  const { start, end } = monthRange(mk);
+  return {
+    periodType,
+    startDate: start,
+    endDate: end,
+    rangeLabel: monthLabelLong(mk),
+    heroLabel: HERO_LABELS.month,
+  };
+}
+
+/** Derive the natural end date for a period type given a start date. */
+export function derivePeriodEnd(periodType: BudgetPeriodType, startDate: string): string {
+  const d = parseLocalDate(startDate);
+  if (periodType === "week") return formatDateStr(addDays(d, 6));
+  if (periodType === "fortnight") return formatDateStr(addDays(d, 13));
+  // month: last day of the start-date's month
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return formatDateStr(end);
+}
+
+/**
+ * Build a window from explicit start + end dates (custom length).
+ * Range label uses the shared `formatDateRange` helper.
+ */
+export function customPeriodWindow(
+  periodType: BudgetPeriodType,
+  startDate: string,
+  endDate: string,
+): PeriodWindow {
+  return {
+    periodType,
+    startDate,
+    endDate,
+    rangeLabel: formatDateRange(startDate, endDate),
+    heroLabel: HERO_LABELS[periodType],
+  };
+}
+
+/** Shift a window by ±1 unit, returning the new anchor (start date). */
+export function shiftPeriodAnchor(periodType: BudgetPeriodType, anchor: string, delta: number): string {
+  if (periodType === "week") return shiftWeek(anchor, delta);
+  if (periodType === "fortnight") return shiftFortnight(anchor, delta);
+  const mk = anchor.slice(0, 7);
+  const next = shiftMonth(mk, delta);
+  return `${next}-01`;
+}
+
+/** Days elapsed/left/total for a window vs today. */
+export function periodDayCounts(win: PeriodWindow): {
+  daysTotal: number;
+  daysElapsed: number;
+  daysLeft: number;
+  isFuture: boolean;
+} {
+  const start = parseLocalDate(win.startDate);
+  const end = parseLocalDate(win.endDate);
+  const today = parseLocalDate(todayDateStr());
+  const daysTotal = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  if (today < start) {
+    return { daysTotal, daysElapsed: 0, daysLeft: daysTotal, isFuture: true };
+  }
+  if (today > end) {
+    return { daysTotal, daysElapsed: daysTotal, daysLeft: 0, isFuture: false };
+  }
+  const daysElapsed = Math.round((today.getTime() - start.getTime()) / 86400000) + 1;
+  return {
+    daysTotal,
+    daysElapsed,
+    daysLeft: Math.max(0, daysTotal - daysElapsed),
+    isFuture: false,
+  };
+}
+
 /** Today as YYYY-MM-DD */
 export function todayDateStr(): string {
   const d = new Date();

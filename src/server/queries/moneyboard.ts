@@ -6,8 +6,12 @@ import {
   monthRange,
   formatMonthLong,
   formatMonthShort,
+  periodWindow,
+  customPeriodWindow,
+  periodDayCounts,
   DEFAULT_CATEGORIES,
 } from "@/domain/moneyboard";
+import type { BudgetPeriodType, PeriodWindow } from "@/domain/moneyboard";
 import type {
   MoneyCategoryDisplay,
   MoneyEntryDisplay,
@@ -16,6 +20,10 @@ import type {
   MonthlyMoneySummary,
   MonthNavOption,
   LifetimeMoneyStats,
+  BudgetPeriodDisplay,
+  BudgetCategorySegment,
+  CommittedItemDisplay,
+  RecurringBillDisplay,
 } from "@/types";
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
@@ -532,6 +540,263 @@ export async function importHoursBoardPeriod(
     source: "hoursboard",
     payPeriodId,
   });
+}
+
+// ── Fortnight-budget planner ────────────────────────────────────────────────
+
+const RECENT_ENTRIES_LIMIT = 6;
+
+type BudgetWithItems = Prisma.BudgetPeriodGetPayload<{
+  include: { committedItems: true };
+}>;
+
+function toCommittedItemDisplay(row: BudgetWithItems["committedItems"][number]): CommittedItemDisplay {
+  return {
+    id: row.id,
+    name: row.name,
+    amount: row.amount,
+    recur: row.recur,
+    sortOrder: row.sortOrder,
+  };
+}
+
+/**
+ * Build a full BudgetPeriodDisplay for a (periodType, anchor, currency) window.
+ * Reads any saved plan (BudgetPeriod + CommittedItems), then joins actual
+ * spending from MoneyEntry for the same window and currency.
+ * Never mutates — plan creation happens through the savePlan action.
+ */
+export async function getBudgetSummary(
+  userId: string,
+  periodType: BudgetPeriodType,
+  anchor: string | undefined,
+  currency: string,
+  endOverride?: string,
+): Promise<BudgetPeriodDisplay> {
+  const baseWin: PeriodWindow = periodWindow(periodType, anchor);
+  const win: PeriodWindow =
+    endOverride && endOverride >= baseWin.startDate
+      ? customPeriodWindow(periodType, baseWin.startDate, endOverride)
+      : baseWin;
+  const counts = periodDayCounts(win);
+
+  const plan: BudgetWithItems | null = await db.budgetPeriod.findUnique({
+    where: {
+      userId_currency_periodType_startDate: {
+        userId,
+        currency,
+        periodType,
+        startDate: win.startDate,
+      },
+    },
+    include: {
+      committedItems: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+    },
+  });
+
+  const committedItems = plan ? plan.committedItems.map(toCommittedItemDisplay) : [];
+  const committedTotal = committedItems.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+  const moneyIn = plan?.moneyIn ?? 0;
+  const protectValue = plan?.protectValue ?? 0;
+
+  const expensesRaw = await db.moneyEntry.findMany({
+    where: {
+      userId,
+      currency,
+      kind: "expense",
+      date: { gte: win.startDate, lte: win.endDate },
+    },
+    include: { category: true },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+  });
+  const expenses = expensesRaw.map(toEntryDisplay);
+
+  const spent = expenses.reduce((s, e) => s + e.amount, 0);
+  const plannedSpendable = moneyIn - protectValue - committedTotal;
+  const leftToSpend = plannedSpendable - spent;
+  const perDay = counts.daysLeft > 0
+    ? Math.max(0, leftToSpend) / counts.daysLeft
+    : Math.max(0, leftToSpend);
+  const progressPercent = plannedSpendable > 0
+    ? Math.max(0, Math.min(100, Math.round((spent / plannedSpendable) * 100)))
+    : 0;
+
+  const byCat = new Map<string, BudgetCategorySegment>();
+  for (const e of expenses) {
+    const existing = byCat.get(e.category.id);
+    if (existing) {
+      existing.amount += e.amount;
+    } else {
+      byCat.set(e.category.id, {
+        categoryId: e.category.id,
+        label: e.category.label,
+        color: e.category.color,
+        amount: e.amount,
+        percent: 0,
+      });
+    }
+  }
+  const categorySegments: BudgetCategorySegment[] = [...byCat.values()]
+    .map((seg) => ({
+      ...seg,
+      amount: Math.round(seg.amount * 100) / 100,
+      percent: spent > 0 ? Math.round((seg.amount / spent) * 100) : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return {
+    id: plan?.id ?? null,
+    periodType,
+    startDate: win.startDate,
+    endDate: win.endDate,
+    currency,
+    rangeLabel: win.rangeLabel,
+    heroLabel: win.heroLabel,
+    daysTotal: counts.daysTotal,
+    daysElapsed: counts.daysElapsed,
+    daysLeft: counts.daysLeft,
+    isFuture: counts.isFuture,
+    hasPlan: !!plan,
+    moneyIn,
+    protectValue,
+    committedTotal: Math.round(committedTotal * 100) / 100,
+    committedItems,
+    plannedSpendable: Math.round(plannedSpendable * 100) / 100,
+    spent: Math.round(spent * 100) / 100,
+    leftToSpend: Math.round(leftToSpend * 100) / 100,
+    perDay: Math.round(perDay * 100) / 100,
+    progressPercent,
+    categorySegments,
+    recentEntries: expenses.slice(0, RECENT_ENTRIES_LIMIT),
+  };
+}
+
+export interface SaveBudgetPlanInput {
+  periodType: BudgetPeriodType;
+  startDate: string;
+  endDate: string;
+  currency: string;
+  moneyIn: number;
+  protectValue: number;
+  committedItems: { name: string; amount: number; recur: string }[];
+}
+
+/** Upsert the plan for a window and replace its committed items. */
+export async function saveBudgetPlan(userId: string, input: SaveBudgetPlanInput): Promise<void> {
+  const cleanedItems = input.committedItems
+    .map((it, i) => ({
+      name: (it.name || "").trim() || "Item",
+      amount: Math.max(0, Number(it.amount) || 0),
+      recur: (it.recur || "Monthly").trim() || "Monthly",
+      sortOrder: i,
+    }))
+    .filter((it) => it.amount > 0 || it.name !== "Item");
+
+  await db.$transaction(async (tx) => {
+    const plan = await tx.budgetPeriod.upsert({
+      where: {
+        userId_currency_periodType_startDate: {
+          userId,
+          currency: input.currency,
+          periodType: input.periodType,
+          startDate: input.startDate,
+        },
+      },
+      create: {
+        userId,
+        currency: input.currency,
+        periodType: input.periodType,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        moneyIn: Math.max(0, Number(input.moneyIn) || 0),
+        protectValue: Math.max(0, Number(input.protectValue) || 0),
+      },
+      update: {
+        endDate: input.endDate,
+        moneyIn: Math.max(0, Number(input.moneyIn) || 0),
+        protectValue: Math.max(0, Number(input.protectValue) || 0),
+      },
+    });
+
+    await tx.committedItem.deleteMany({ where: { budgetPeriodId: plan.id } });
+    if (cleanedItems.length > 0) {
+      await tx.committedItem.createMany({
+        data: cleanedItems.map((it) => ({ ...it, budgetPeriodId: plan.id })),
+      });
+    }
+  });
+}
+
+// ── Recurring bills ─────────────────────────────────────────────────────────
+
+export async function getRecurringBills(
+  userId: string,
+  currency: string,
+): Promise<RecurringBillDisplay[]> {
+  const rows = await db.recurringBill.findMany({
+    where: { userId, currency },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    amount: r.amount,
+    currency: r.currency,
+    cadence: r.cadence as "week" | "fortnight" | "month",
+    active: r.active,
+    sortOrder: r.sortOrder,
+  }));
+}
+
+export interface RecurringBillInput {
+  name: string;
+  amount: number;
+  currency: string;
+  cadence: "week" | "fortnight" | "month";
+  active?: boolean;
+}
+
+export async function createRecurringBill(userId: string, input: RecurringBillInput): Promise<void> {
+  const max = await db.recurringBill.aggregate({
+    where: { userId },
+    _max: { sortOrder: true },
+  });
+  await db.recurringBill.create({
+    data: {
+      userId,
+      name: input.name.trim() || "Bill",
+      amount: Math.max(0, Number(input.amount) || 0),
+      currency: input.currency,
+      cadence: input.cadence,
+      active: input.active ?? true,
+      sortOrder: (max._max.sortOrder ?? -1) + 1,
+    },
+  });
+}
+
+export async function updateRecurringBill(
+  id: string,
+  userId: string,
+  input: RecurringBillInput,
+): Promise<void> {
+  const existing = await db.recurringBill.findUnique({ where: { id } });
+  if (!existing || existing.userId !== userId) throw new Error("Bill not found.");
+  await db.recurringBill.update({
+    where: { id },
+    data: {
+      name: input.name.trim() || "Bill",
+      amount: Math.max(0, Number(input.amount) || 0),
+      currency: input.currency,
+      cadence: input.cadence,
+      active: input.active ?? existing.active,
+    },
+  });
+}
+
+export async function deleteRecurringBill(id: string, userId: string): Promise<void> {
+  const existing = await db.recurringBill.findUnique({ where: { id } });
+  if (!existing || existing.userId !== userId) throw new Error("Bill not found.");
+  await db.recurringBill.delete({ where: { id } });
 }
 
 // ── Convenience ──────────────────────────────────────────────────────────────
