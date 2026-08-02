@@ -546,6 +546,26 @@ export async function importHoursBoardPeriod(
 
 const RECENT_ENTRIES_LIMIT = 6;
 
+const DAY_SUFFIX = ["th", "st", "nd", "rd"];
+function ordinalDay(n: number): string {
+  const v = n % 100;
+  return n + (DAY_SUFFIX[(v - 20) % 10] || DAY_SUFFIX[v] || DAY_SUFFIX[0]);
+}
+
+/** True when a monthly bill's dueDay lands somewhere in [start, end] inclusive. */
+function monthlyBillHitsWindow(dueDay: number, start: string, end: string): boolean {
+  const [ys, ms, ds] = start.split("-").map(Number);
+  const [ye, me, de] = end.split("-").map(Number);
+  const startDate = new Date(ys, ms - 1, ds);
+  const endDate = new Date(ye, me - 1, de);
+  const cursor = new Date(startDate);
+  while (cursor <= endDate) {
+    if (cursor.getDate() === dueDay) return true;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return false;
+}
+
 type BudgetWithItems = Prisma.BudgetPeriodGetPayload<{
   include: { committedItems: true };
 }>;
@@ -594,7 +614,35 @@ export async function getBudgetSummary(
     },
   });
 
-  const committedItems = plan ? plan.committedItems.map(toCommittedItemDisplay) : [];
+  const savedItems = plan ? plan.committedItems.map(toCommittedItemDisplay) : [];
+
+  // Merge in any active recurring bills that belong on this window but aren't
+  // already on the saved plan. Same rules as the client's Plan sheet auto-fill.
+  const activeBills = await db.recurringBill.findMany({
+    where: { userId, currency, active: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  const savedNames = new Set(savedItems.map((it) => it.name.trim().toLowerCase()));
+  const virtualBillItems: CommittedItemDisplay[] = [];
+  for (const b of activeBills) {
+    const cadenceMatch = b.cadence === periodType;
+    const monthlyHit =
+      b.cadence === "month" &&
+      b.dueDay != null &&
+      monthlyBillHitsWindow(b.dueDay, win.startDate, win.endDate);
+    if (!cadenceMatch && !monthlyHit) continue;
+    const displayName =
+      b.cadence === "month" && b.dueDay ? `${b.name} · ${ordinalDay(b.dueDay)}` : b.name;
+    if (savedNames.has(displayName.trim().toLowerCase())) continue;
+    virtualBillItems.push({
+      id: `auto-bill-${b.id}`,
+      name: displayName,
+      amount: b.amount,
+      recur: b.cadence === "week" ? "Weekly" : b.cadence === "month" ? "Monthly" : "Fortnightly",
+      sortOrder: 9000 + virtualBillItems.length,
+    });
+  }
+  const committedItems: CommittedItemDisplay[] = [...savedItems, ...virtualBillItems];
   const committedTotal = committedItems.reduce((s, it) => s + (Number(it.amount) || 0), 0);
   const moneyIn = plan?.moneyIn ?? 0;
   const protectValue = plan?.protectValue ?? 0;
@@ -743,6 +791,7 @@ export async function getRecurringBills(
     amount: r.amount,
     currency: r.currency,
     cadence: r.cadence as "week" | "fortnight" | "month",
+    dueDay: r.dueDay,
     active: r.active,
     sortOrder: r.sortOrder,
   }));
@@ -753,7 +802,14 @@ export interface RecurringBillInput {
   amount: number;
   currency: string;
   cadence: "week" | "fortnight" | "month";
+  dueDay?: number | null;
   active?: boolean;
+}
+
+function cleanBillDueDay(input: RecurringBillInput): number | null {
+  if (input.cadence !== "month") return null;
+  const d = Number(input.dueDay);
+  return Number.isFinite(d) && d >= 1 && d <= 31 ? Math.floor(d) : null;
 }
 
 export async function createRecurringBill(userId: string, input: RecurringBillInput): Promise<void> {
@@ -768,6 +824,7 @@ export async function createRecurringBill(userId: string, input: RecurringBillIn
       amount: Math.max(0, Number(input.amount) || 0),
       currency: input.currency,
       cadence: input.cadence,
+      dueDay: cleanBillDueDay(input),
       active: input.active ?? true,
       sortOrder: (max._max.sortOrder ?? -1) + 1,
     },
@@ -788,6 +845,7 @@ export async function updateRecurringBill(
       amount: Math.max(0, Number(input.amount) || 0),
       currency: input.currency,
       cadence: input.cadence,
+      dueDay: cleanBillDueDay(input),
       active: input.active ?? existing.active,
     },
   });

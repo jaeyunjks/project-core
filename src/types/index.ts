@@ -157,6 +157,8 @@ export interface RecurringBillDisplay {
   amount: number;
   currency: string;
   cadence: "week" | "fortnight" | "month";
+  /** Day-of-month (1..31) for monthly cadence. Null when not set. */
+  dueDay: number | null;
   active: boolean;
   sortOrder: number;
 }

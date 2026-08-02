@@ -203,6 +203,7 @@ function parseBillForm(formData: FormData): {
   amount: number;
   currency: string;
   cadence: "week" | "fortnight" | "month";
+  dueDay: number | null;
 } | { error: string } {
   const name = ((formData.get("name") as string) ?? "").trim();
   const amount = parseFloat((formData.get("amount") as string) ?? "");
@@ -214,7 +215,20 @@ function parseBillForm(formData: FormData): {
   if (cadenceRaw !== "week" && cadenceRaw !== "fortnight" && cadenceRaw !== "month") {
     return { error: "Cadence must be week, fortnight, or month." };
   }
-  return { name, amount, currency, cadence: cadenceRaw };
+
+  let dueDay: number | null = null;
+  if (cadenceRaw === "month") {
+    const raw = ((formData.get("dueDay") as string) ?? "").trim();
+    if (raw) {
+      const d = parseInt(raw, 10);
+      if (!Number.isFinite(d) || d < 1 || d > 31) {
+        return { error: "Day of month must be between 1 and 31." };
+      }
+      dueDay = d;
+    }
+  }
+
+  return { name, amount, currency, cadence: cadenceRaw, dueDay };
 }
 
 export async function createRecurringBillAction(formData: FormData): Promise<BillResult> {

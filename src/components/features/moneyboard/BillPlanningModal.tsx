@@ -27,6 +27,17 @@ const CADENCE_LABEL: Record<BudgetPeriodType, string> = {
 
 const CADENCES: BudgetPeriodType[] = ["week", "fortnight", "month"];
 
+const DAY_SUFFIX = ["th", "st", "nd", "rd"];
+function ordinalDay(n: number): string {
+  const v = n % 100;
+  return n + (DAY_SUFFIX[(v - 20) % 10] || DAY_SUFFIX[v] || DAY_SUFFIX[0]);
+}
+
+function billDueLabel(bill: RecurringBillDisplay): string | null {
+  if (bill.cadence === "month" && bill.dueDay) return `Due ${ordinalDay(bill.dueDay)}`;
+  return null;
+}
+
 export function BillPlanningModal({ open, onClose, bills, currency }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -35,6 +46,7 @@ export function BillPlanningModal({ open, onClose, bills, currency }: Props) {
   const [draftName, setDraftName] = useState("");
   const [draftAmount, setDraftAmount] = useState("");
   const [draftCadence, setDraftCadence] = useState<BudgetPeriodType>("fortnight");
+  const [draftDueDay, setDraftDueDay] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -43,6 +55,7 @@ export function BillPlanningModal({ open, onClose, bills, currency }: Props) {
     setDraftName("");
     setDraftAmount("");
     setDraftCadence("fortnight");
+    setDraftDueDay("");
   }, [open]);
 
   useEffect(() => {
@@ -59,6 +72,7 @@ export function BillPlanningModal({ open, onClose, bills, currency }: Props) {
     setDraftName(bill.name);
     setDraftAmount(String(bill.amount));
     setDraftCadence(bill.cadence);
+    setDraftDueDay(bill.dueDay ? String(bill.dueDay) : "");
     setError(null);
   };
 
@@ -67,6 +81,7 @@ export function BillPlanningModal({ open, onClose, bills, currency }: Props) {
     setDraftName("");
     setDraftAmount("");
     setDraftCadence("fortnight");
+    setDraftDueDay("");
   };
 
   const submit = () => {
@@ -80,6 +95,9 @@ export function BillPlanningModal({ open, onClose, bills, currency }: Props) {
     fd.set("amount", String(amt));
     fd.set("currency", currency.code);
     fd.set("cadence", draftCadence);
+    if (draftCadence === "month" && draftDueDay.trim()) {
+      fd.set("dueDay", draftDueDay.trim());
+    }
     if (editing) fd.set("id", editing);
 
     startTransition(async () => {
@@ -162,6 +180,7 @@ export function BillPlanningModal({ open, onClose, bills, currency }: Props) {
                   <div className="text-[14.5px] font-medium text-ink truncate">{b.name}</div>
                   <div className="text-[11.5px] font-mono text-muted mt-0.5">
                     {CADENCE_LABEL[b.cadence]} · {formatMoney(b.amount, { currency })}
+                    {billDueLabel(b) && <> · {billDueLabel(b)}</>}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -226,7 +245,10 @@ export function BillPlanningModal({ open, onClose, bills, currency }: Props) {
               <span className="text-[11px] font-semibold font-mono uppercase tracking-[0.12em] text-faint">Cadence</span>
               <select
                 value={draftCadence}
-                onChange={(e) => setDraftCadence(e.target.value as BudgetPeriodType)}
+                onChange={(e) => {
+                  setDraftCadence(e.target.value as BudgetPeriodType);
+                  setDraftDueDay("");
+                }}
                 className="mt-1.5 w-full h-10 px-3 rounded-[10px] border border-border-soft bg-paper text-[14px] font-medium text-ink outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all appearance-none"
               >
                 {CADENCES.map((c) => (
@@ -237,6 +259,27 @@ export function BillPlanningModal({ open, onClose, bills, currency }: Props) {
               </select>
             </label>
           </div>
+
+          {draftCadence === "month" && (
+            <label className="block mt-3">
+              <span className="text-[11px] font-semibold font-mono uppercase tracking-[0.12em] text-faint">
+                Day of month <span className="text-pale font-normal normal-case tracking-normal">· optional</span>
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                inputMode="numeric"
+                value={draftDueDay}
+                onChange={(e) => setDraftDueDay(e.target.value)}
+                placeholder="e.g. 15"
+                className="mt-1.5 w-full h-10 px-3 rounded-[10px] border border-border-soft bg-paper text-[14px] font-mono font-semibold text-ink outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all"
+              />
+              <p className="text-[11.5px] text-subtle mt-1.5">
+                1–31 — the day the bill is charged each month.
+              </p>
+            </label>
+          )}
 
           {error && (
             <div className="mt-3 text-[13px] text-[#8A3F2E] bg-[#F1DDD5] border border-[#E4C8BD] rounded-[10px] px-3 py-2">

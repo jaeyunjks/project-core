@@ -37,13 +37,68 @@ function newDraftKey(): string {
   return "draft-" + Math.random().toString(36).slice(2, 9);
 }
 
+const DAY_SUFFIX = ["th", "st", "nd", "rd"];
+function ordinal(n: number): string {
+  const v = n % 100;
+  return n + (DAY_SUFFIX[(v - 20) % 10] || DAY_SUFFIX[v] || DAY_SUFFIX[0]);
+}
+
 function billsToDraft(bills: RecurringBillDisplay[]): DraftItem[] {
-  return bills.map((b) => ({
-    key: "bill-" + b.id,
-    name: b.name,
-    amount: String(b.amount),
-    recur: b.cadence === "week" ? "Weekly" : b.cadence === "month" ? "Monthly" : "Fortnightly",
-  }));
+  return bills.map((b) => {
+    const name = b.cadence === "month" && b.dueDay ? `${b.name} · ${ordinal(b.dueDay)}` : b.name;
+    return {
+      key: "bill-" + b.id,
+      name,
+      amount: String(b.amount),
+      recur: b.cadence === "week" ? "Weekly" : b.cadence === "month" ? "Monthly" : "Fortnightly",
+    };
+  });
+}
+
+/**
+ * True when a monthly bill's dueDay falls somewhere inside the [start, end]
+ * window (dates as YYYY-MM-DD, inclusive). Handles windows that straddle a
+ * month boundary — a single dueDay hit anywhere in the window returns true.
+ */
+function monthlyBillHitsWindow(dueDay: number, start: string, end: string): boolean {
+  const [ys, ms, ds] = start.split("-").map(Number);
+  const [ye, me, de] = end.split("-").map(Number);
+  const startDate = new Date(ys, ms - 1, ds);
+  const endDate = new Date(ye, me - 1, de);
+  const cursor = new Date(startDate);
+  while (cursor <= endDate) {
+    if (cursor.getDate() === dueDay) return true;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return false;
+}
+
+/**
+ * Pick recurring bills that belong on a plan for [start, end] of periodType.
+ *   • Cadence-matched bills always fill (weekly bill on a week plan, etc.)
+ *   • Monthly bills with a specific dueDay ALSO fill non-monthly plans whenever
+ *     the window covers that day-of-month — so a "3rd of month" bill lands on
+ *     a fortnight that straddles the 3rd.
+ * De-dupes by bill id so a monthly bill on a monthly plan isn't listed twice.
+ */
+function selectAutoBills(
+  bills: RecurringBillDisplay[],
+  periodType: "week" | "fortnight" | "month",
+  start: string,
+  end: string,
+): RecurringBillDisplay[] {
+  const picked = new Map<string, RecurringBillDisplay>();
+  for (const b of bills) {
+    if (!b.active) continue;
+    if (b.cadence === periodType) {
+      picked.set(b.id, b);
+      continue;
+    }
+    if (b.cadence === "month" && b.dueDay && monthlyBillHitsWindow(b.dueDay, start, end)) {
+      picked.set(b.id, b);
+    }
+  }
+  return [...picked.values()];
 }
 
 export function PlanBudgetSheet({ open, onClose, budget, currency, anchor, bills }: Props) {
@@ -58,12 +113,12 @@ export function PlanBudgetSheet({ open, onClose, budget, currency, anchor, bills
     if (open) {
       setMoneyIn(budget.moneyIn ? String(budget.moneyIn) : "");
       setProtectVal(budget.protectValue ? String(budget.protectValue) : "");
-      if (budget.hasPlan) {
-        setItems(itemsToDraft(budget.committedItems));
-      } else {
-        const matching = bills.filter((b) => b.active && b.cadence === budget.periodType);
-        setItems(billsToDraft(matching));
-      }
+      const picked = selectAutoBills(bills, budget.periodType, budget.startDate, budget.endDate);
+      const pickedDrafts = billsToDraft(picked);
+      const existing = itemsToDraft(budget.committedItems);
+      const existingNames = new Set(existing.map((it) => it.name.trim().toLowerCase()));
+      const missing = pickedDrafts.filter((it) => !existingNames.has(it.name.trim().toLowerCase()));
+      setItems([...existing, ...missing]);
       setError(null);
     }
   }, [open, budget, bills]);

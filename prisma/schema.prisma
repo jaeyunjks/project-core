@@ -199,17 +199,19 @@ model BudgetPeriod {
 // A repeating bill/subscription the user wants auto-included on each new plan
 // whose periodType matches this bill's cadence.
 model RecurringBill {
-  id        String   @id @default(cuid())
-  userId    String
-  name      String
-  amount    Float    @default(0)
-  currency  String   @default("AUD")
-  cadence   String   // "week" | "fortnight" | "month"
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  amount       Float    @default(0)
+  currency     String   @default("AUD")
+  cadence      String   // "week" | "fortnight" | "month"
+  // For "month" cadence: day-of-month (1..31). Ignored for week/fortnight.
+  dueDay       Int?
+  active       Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, cadence])
 }
