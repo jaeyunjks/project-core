@@ -13,7 +13,7 @@ import {
   updateRecurringBill,
   deleteRecurringBill,
 } from "@/server/queries/moneyboard";
-import { CURRENCIES, DEFAULT_CURRENCY, periodWindow } from "@/domain/moneyboard";
+import { CURRENCIES, DEFAULT_CURRENCY, resolvePeriodWindow } from "@/domain/moneyboard";
 import type { BudgetPeriodType } from "@/domain/moneyboard";
 
 function revalidateMoneyBoard() {
@@ -176,7 +176,7 @@ export async function saveBudgetPlanAction(formData: FormData): Promise<SaveBudg
     }
   }
 
-  const win = periodWindow(periodType, anchor);
+  const win = resolvePeriodWindow(periodType, anchor);
   try {
     await saveBudgetPlan(user.id, {
       periodType,

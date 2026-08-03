@@ -97,6 +97,11 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
 
   const naturalEnd = derivePeriodEnd(budget.periodType, budget.startDate);
   const isCustomEnd = budget.endDate !== naturalEnd;
+
+  // Does today fall inside the period currently on screen?
+  const isCurrent = budget.today >= budget.startDate && budget.today <= budget.endDate;
+  const isFuturePeriod = budget.today < budget.startDate;
+  const periodStatus = isCurrent ? "Now" : isFuturePeriod ? "Upcoming" : "Ended";
   const [protectHidden, setProtectHidden] = useState(true);
   const [committedOpen, setCommittedOpen] = useState(false);
 
@@ -114,6 +119,22 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
         <div className="flex items-center gap-2 mb-3">
           <CurrencySelector currency={currency} onChange={setCurrency} />
           <PeriodDropdown value={budget.periodType} onChange={setPeriodType} />
+          <span
+            className={cn(
+              "ml-auto h-9 flex items-center gap-2 rounded-full pl-3 pr-3.5",
+              isCurrent ? "bg-sage-tint" : "bg-white border border-border-soft shadow-sm",
+            )}
+          >
+            {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-sage" />}
+            <span
+              className={cn(
+                "text-[11px] font-semibold font-mono uppercase tracking-[0.12em]",
+                isCurrent ? "text-sage" : "text-faint",
+              )}
+            >
+              {periodStatus}
+            </span>
+          </span>
         </div>
 
         {/* Row 2 — date range */}
@@ -159,7 +180,7 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
           </div>
 
           <div className="text-[20px] md:text-[22px] font-semibold tracking-tight text-ink mt-1">
-            {budget.rangeLabel}
+            {isCurrent ? formatLongDate(budget.today) : budget.rangeLabel}
           </div>
           <div className="text-[11.5px] font-mono text-muted mt-1">
             {formatLongDate(budget.startDate)} → {formatLongDate(budget.endDate)}
@@ -192,8 +213,9 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
             </div>
           )}
 
-          {/* Committed items breakdown — collapsible, visible once a plan is saved */}
-          {budget.hasPlan && budget.committedItems.length > 0 && (
+          {/* Committed items breakdown — collapsible, visible whenever anything
+              is committed (saved plan items OR auto-filled recurring bills) */}
+          {budget.committedItems.length > 0 && (
             <div className="mt-4 rounded-[12px] bg-paper/60 border border-border-soft/70">
               <button
                 type="button"

@@ -101,7 +101,7 @@ function selectAutoBills(
   return [...picked.values()];
 }
 
-export function PlanBudgetSheet({ open, onClose, budget, currency, anchor, bills }: Props) {
+export function PlanBudgetSheet({ open, onClose, budget, currency, bills }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +151,9 @@ export function PlanBudgetSheet({ open, onClose, budget, currency, anchor, bills
     }));
     const fd = new FormData();
     fd.set("periodType", budget.periodType);
-    if (anchor) fd.set("anchor", anchor);
+    // Key the plan to the window actually on screen — covers custom / derived
+    // start dates, where the URL anchor may be absent or Monday-snapped.
+    fd.set("anchor", budget.startDate);
     fd.set("currency", currency.code);
     fd.set("moneyIn", String(moneyInNum));
     fd.set("protectValue", String(protectNum));

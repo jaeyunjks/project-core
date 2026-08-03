@@ -206,6 +206,7 @@ export interface BudgetPeriodDisplay {
   periodType: BudgetPeriodType;
   startDate: string;
   endDate: string;
+  today: string;              // YYYY-MM-DD — server's current date
   currency: string;
   rangeLabel: string;         // "1–14 Aug"
   heroLabel: string;          // "THIS FORTNIGHT" / "THIS MONTH" / "THIS WEEK"

@@ -6,8 +6,10 @@ import {
   monthRange,
   formatMonthLong,
   formatMonthShort,
-  periodWindow,
   customPeriodWindow,
+  resolvePeriodWindow,
+  projectAnchorToToday,
+  billOccurrencesInPeriod,
   periodDayCounts,
   guessCategoryIcon,
   DEFAULT_CATEGORIES,
@@ -630,7 +632,24 @@ export async function getBudgetSummary(
   currency: string,
   endOverride?: string,
 ): Promise<BudgetPeriodDisplay> {
-  const baseWin: PeriodWindow = periodWindow(periodType, anchor);
+  const today = fmtDate(new Date());
+
+  // Default view (no explicit anchor): if the user has a saved plan for this
+  // period type, follow its custom cycle start instead of snapping to Monday —
+  // so a start date they set once carries forward across visits.
+  let effectiveAnchor = anchor;
+  if (!effectiveAnchor && periodType !== "month") {
+    const latestPlan = await db.budgetPeriod.findFirst({
+      where: { userId, currency, periodType },
+      orderBy: { startDate: "desc" },
+      select: { startDate: true },
+    });
+    if (latestPlan) {
+      effectiveAnchor = projectAnchorToToday(periodType, latestPlan.startDate, today);
+    }
+  }
+
+  const baseWin: PeriodWindow = resolvePeriodWindow(periodType, effectiveAnchor);
   const win: PeriodWindow =
     endOverride && endOverride >= baseWin.startDate
       ? customPeriodWindow(periodType, baseWin.startDate, endOverride)
@@ -662,19 +681,32 @@ export async function getBudgetSummary(
   const savedNames = new Set(savedItems.map((it) => it.name.trim().toLowerCase()));
   const virtualBillItems: CommittedItemDisplay[] = [];
   for (const b of activeBills) {
-    const cadenceMatch = b.cadence === periodType;
-    const monthlyHit =
-      b.cadence === "month" &&
+    const cadence = b.cadence as BudgetPeriodType;
+    // How many of this bill land in the window:
+    //  • same cadence → 1
+    //  • monthly bill with a due-day that falls inside a shorter window → 1
+    //  • shorter cadence than the period (weekly on a month, etc.) → scaled up
+    //    (×2 / ×4), so its full cost for the period is committed & budgeted
+    let occurrences: number;
+    if (cadence === periodType) {
+      occurrences = 1;
+    } else if (
+      cadence === "month" &&
       b.dueDay != null &&
-      monthlyBillHitsWindow(b.dueDay, win.startDate, win.endDate);
-    if (!cadenceMatch && !monthlyHit) continue;
+      monthlyBillHitsWindow(b.dueDay, win.startDate, win.endDate)
+    ) {
+      occurrences = 1;
+    } else {
+      occurrences = billOccurrencesInPeriod(cadence, periodType);
+    }
+    if (occurrences <= 0) continue;
     const displayName =
       b.cadence === "month" && b.dueDay ? `${b.name} · ${ordinalDay(b.dueDay)}` : b.name;
     if (savedNames.has(displayName.trim().toLowerCase())) continue;
     virtualBillItems.push({
       id: `auto-bill-${b.id}`,
       name: displayName,
-      amount: b.amount,
+      amount: Math.round(b.amount * occurrences * 100) / 100,
       recur: b.cadence === "week" ? "Weekly" : b.cadence === "month" ? "Monthly" : "Fortnightly",
       sortOrder: 9000 + virtualBillItems.length,
     });
@@ -739,11 +771,12 @@ export async function getBudgetSummary(
     }
   }
 
-  // Materialize a real expense category for every SAVED plan item that doesn't
-  // have one yet — so plan categories reflect in the drawdown + Add-spend picker
-  // even for plans saved before this behaviour existed. Idempotent.
+  // Materialize a real expense category for every committed item that doesn't
+  // have one yet — including auto-filled recurring bills, so a bill reflects in
+  // the drawdown + Add-spend picker as soon as it's added, without waiting for a
+  // plan to be saved. Idempotent.
   let maxSort = expenseCats.reduce((m, c) => Math.max(m, c.sortOrder), -1);
-  for (const it of savedItems) {
+  for (const it of committedItems) {
     const baseName = it.name.split(" · ")[0].trim();
     if (!baseName || baseName === "Item") continue;
     const key = baseName.toLowerCase();
@@ -769,12 +802,11 @@ export async function getBudgetSummary(
   // Auto-count applicable bills as "paid" spend in their category, so the bar
   // fills without a manual entry. Weekly/fortnightly (no exact date) pay
   // immediately; monthly with a due day pays once that date has arrived.
-  const today = fmtDate(new Date());
   const billByBase = new Map<string, (typeof activeBills)[number]>();
   for (const b of activeBills) billByBase.set(b.name.trim().toLowerCase(), b);
   const billPaidByCatId = new Map<string, number>();
   let billPaidTotal = 0;
-  for (const it of savedItems) {
+  for (const it of committedItems) {
     const baseName = it.name.split(" · ")[0].trim();
     const bill = billByBase.get(baseName.toLowerCase());
     if (!bill) continue;
@@ -840,6 +872,7 @@ export async function getBudgetSummary(
     periodType,
     startDate: win.startDate,
     endDate: win.endDate,
+    today,
     currency,
     rangeLabel: win.rangeLabel,
     heroLabel: win.heroLabel,

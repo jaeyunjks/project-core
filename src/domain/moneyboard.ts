@@ -248,6 +248,24 @@ export function periodWindow(periodType: BudgetPeriodType, anchor?: string): Per
   };
 }
 
+/**
+ * Resolve the working window for a (periodType, anchor) pair.
+ *
+ *   • No anchor → snap to the natural calendar unit (Monday-based week /
+ *     fortnight, calendar month). This is the "this week/fortnight/month" default.
+ *   • Explicit anchor → the anchor IS the start date. Week and fortnight windows
+ *     are NOT snapped back to Monday, so a custom start date is honoured exactly.
+ *     Month keeps calendar-month semantics (the "August 2026" label).
+ *
+ * Both the read path (getBudgetSummary) and the write path (saveBudgetPlanAction)
+ * must go through this so a plan is keyed by the same start date it's read with.
+ */
+export function resolvePeriodWindow(periodType: BudgetPeriodType, anchor?: string): PeriodWindow {
+  if (!anchor) return periodWindow(periodType, undefined);
+  if (periodType === "month") return periodWindow("month", anchor);
+  return customPeriodWindow(periodType, anchor, derivePeriodEnd(periodType, anchor));
+}
+
 /** Derive the natural end date for a period type given a start date. */
 export function derivePeriodEnd(periodType: BudgetPeriodType, startDate: string): string {
   const d = parseLocalDate(startDate);
@@ -274,6 +292,44 @@ export function customPeriodWindow(
     rangeLabel: formatDateRange(startDate, endDate),
     heroLabel: HERO_LABELS[periodType],
   };
+}
+
+/**
+ * Project a saved plan's start date onto the window (of the same period type)
+ * that contains `today`, preserving the plan's start weekday/cadence. Lets a
+ * custom cycle (e.g. a Saturday-start week) become the ongoing default without
+ * snapping back to Monday. Month keeps calendar-month semantics, so it's a
+ * no-op there (returns today, which resolves to the calendar month).
+ */
+export function projectAnchorToToday(
+  periodType: BudgetPeriodType,
+  planStart: string,
+  today: string,
+): string {
+  if (periodType === "month") return today;
+  const step = periodType === "week" ? 7 : 14;
+  const start = parseLocalDate(planStart);
+  const t = parseLocalDate(today);
+  const diffDays = Math.floor((t.getTime() - start.getTime()) / 86400000);
+  const n = Math.floor(diffDays / step);
+  return formatDateStr(addDays(start, n * step));
+}
+
+/**
+ * How many times a bill of `billCadence` recurs inside one `periodType` window,
+ * when the bill's cadence is shorter than the period (a month ≈ 4 weeks ≈ 2
+ * fortnights). Returns 1 when they match, and 0 when the bill's cadence is
+ * longer than the period (handled elsewhere via due-day hits). Used to scale a
+ * sub-period bill's amount up to the period total — e.g. a weekly bill counts
+ * ×4 on a monthly plan.
+ */
+export function billOccurrencesInPeriod(
+  billCadence: BudgetPeriodType,
+  periodType: BudgetPeriodType,
+): number {
+  const weeks: Record<BudgetPeriodType, number> = { week: 1, fortnight: 2, month: 4 };
+  const occ = weeks[periodType] / weeks[billCadence];
+  return occ >= 1 ? occ : 0;
 }
 
 /** Shift a window by ±1 unit, returning the new anchor (start date). */
