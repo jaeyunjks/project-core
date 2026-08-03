@@ -13,7 +13,6 @@ interface Props {
   onClose: () => void;
   budget: BudgetPeriodDisplay;
   currency: CurrencyOption;
-  anchor: string | undefined;
   bills: RecurringBillDisplay[];
 }
 

@@ -30,11 +30,18 @@ interface Props {
   budget: BudgetPeriodDisplay;
   categories: MoneyCategoryDisplay[];
   currency: CurrencyOption;
-  anchor: string | undefined;
   bills: RecurringBillDisplay[];
 }
 
-export function BudgetOverview({ budget, categories, currency, anchor, bills }: Props) {
+// URL param holding the start anchor for each cadence — kept separate so one
+// cadence's navigation never overwrites another's custom start.
+const ANCHOR_KEY: Record<BudgetPeriodType, string> = {
+  week: "wk",
+  fortnight: "fn",
+  month: "mo",
+};
+
+export function BudgetOverview({ budget, categories, currency, bills }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -61,17 +68,22 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
     router.push(`${pathname}?${params.toString()}`);
   };
 
+  const anchorKey = ANCHOR_KEY[budget.periodType];
+
   const setPeriodType = (t: BudgetPeriodType) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", t);
-    params.delete("date");
+    // Keep every cadence's anchor so a custom start survives switching period
+    // type and back (a 22 Jul fortnight isn't lost — nor snapped to Monday —
+    // when you flip to monthly, navigate months, and return). Only the custom
+    // end is view-specific, so reset that.
     params.delete("end");
     router.push(`${pathname}?${params.toString()}`);
   };
 
   const navToAnchor = (newAnchor: string) => {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("date", newAnchor);
+    params.set(anchorKey, newAnchor);
     params.delete("end");
     router.push(`${pathname}?${params.toString()}`);
   };
@@ -79,7 +91,7 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
   const setStartDate = (newStart: string) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newStart)) return;
     const params = new URLSearchParams(searchParams.toString());
-    params.set("date", newStart);
+    params.set(anchorKey, newStart);
     params.delete("end");
     router.push(`${pathname}?${params.toString()}`);
   };
@@ -88,7 +100,7 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newEnd)) return;
     if (newEnd < budget.startDate) return;
     const params = new URLSearchParams(searchParams.toString());
-    if (!params.get("date")) params.set("date", budget.startDate);
+    if (!params.get(anchorKey)) params.set(anchorKey, budget.startDate);
     const naturalEnd = derivePeriodEnd(budget.periodType, budget.startDate);
     if (newEnd === naturalEnd) params.delete("end");
     else params.set("end", newEnd);
@@ -450,7 +462,6 @@ export function BudgetOverview({ budget, categories, currency, anchor, bills }: 
         onClose={() => setPlanOpen(false)}
         budget={budget}
         currency={currency}
-        anchor={anchor}
         bills={bills}
       />
       <BillPlanningModal

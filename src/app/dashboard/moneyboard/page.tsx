@@ -12,7 +12,14 @@ import { BackButton } from "@/components/ui/BackButton";
 export const metadata = { title: "MoneyBoard — Coreboard" };
 
 interface Props {
-  searchParams: Promise<{ view?: string; date?: string; end?: string; currency?: string }>;
+  searchParams: Promise<{
+    view?: string;
+    wk?: string; // week start anchor
+    fn?: string; // fortnight start anchor
+    mo?: string; // month anchor
+    end?: string;
+    currency?: string;
+  }>;
 }
 
 const VALID_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -23,7 +30,7 @@ function resolvePeriodType(raw: string | undefined): BudgetPeriodType {
 }
 
 export default async function MoneyBoardPage({ searchParams }: Props) {
-  const { view, date, end, currency: currencyParam } = await searchParams;
+  const { view, wk, fn, mo, end, currency: currencyParam } = await searchParams;
   const user = await getCurrentUser();
 
   const currency =
@@ -31,7 +38,11 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
     DEFAULT_CURRENCY;
 
   const periodType = resolvePeriodType(view);
-  const anchor = date && VALID_DATE.test(date) ? date : undefined;
+  // Each cadence has its own start anchor, so navigating (or customising) one
+  // never clobbers another's custom start — a fortnight starting 22 Jul survives
+  // a trip through the monthly view and its month-by-month navigation.
+  const rawAnchor = periodType === "week" ? wk : periodType === "fortnight" ? fn : mo;
+  const anchor = rawAnchor && VALID_DATE.test(rawAnchor) ? rawAnchor : undefined;
   const endOverride = end && VALID_DATE.test(end) ? end : undefined;
 
   // Load the budget first — it lazily materializes plan categories — so the
@@ -60,7 +71,6 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
         budget={budget}
         categories={categories}
         currency={currency}
-        anchor={anchor}
         bills={bills}
       />
     </div>
