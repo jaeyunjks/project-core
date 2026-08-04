@@ -63,8 +63,9 @@ export function AppShell({ children, user }: AppShellProps) {
       {/* Page content */}
       <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 h-16 border-t border-border-soft bg-white/95 backdrop-blur-sm flex items-center justify-around px-3 z-50">
+      {/* Mobile bottom nav — solid bg. backdrop-blur on a fixed element lags and
+          visibly detaches during momentum scrolling on mobile, so avoid it. */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 h-16 border-t border-border-soft bg-white flex items-center justify-around px-3 z-50">
         {mobileNav.map((item) => {
           const active = isActive(item.href);
           return (

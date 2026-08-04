@@ -50,6 +50,9 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
   const [billsOpen, setBillsOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, startDelete] = useTransition();
+  // Drives the loading overlay while a period / date / currency change round-trips
+  // to the server — the deployed RSC fetch can take a couple of seconds.
+  const [isNavPending, startNav] = useTransition();
 
   const deleteEntry = (id: string) => {
     setDeletingId(id);
@@ -62,13 +65,23 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
     });
   };
 
+  const anchorKey = ANCHOR_KEY[budget.periodType];
+
+  const pushWithLoading = (params: URLSearchParams) => {
+    startNav(() => router.push(`${pathname}?${params.toString()}`));
+  };
+
+  // Persist the chosen start so it survives refresh / tab close / re-login (the
+  // login redirect drops URL params); the server reads this cookie on next load.
+  const persistAnchor = (value: string) => {
+    document.cookie = `mb_${anchorKey}=${value}; path=/; max-age=31536000; samesite=lax`;
+  };
+
   const setCurrency = (c: CurrencyOption) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("currency", c.code);
-    router.push(`${pathname}?${params.toString()}`);
+    pushWithLoading(params);
   };
-
-  const anchorKey = ANCHOR_KEY[budget.periodType];
 
   const setPeriodType = (t: BudgetPeriodType) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -78,14 +91,15 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
     // when you flip to monthly, navigate months, and return). Only the custom
     // end is view-specific, so reset that.
     params.delete("end");
-    router.push(`${pathname}?${params.toString()}`);
+    pushWithLoading(params);
   };
 
   const navToAnchor = (newAnchor: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set(anchorKey, newAnchor);
     params.delete("end");
-    router.push(`${pathname}?${params.toString()}`);
+    persistAnchor(newAnchor);
+    pushWithLoading(params);
   };
 
   const setStartDate = (newStart: string) => {
@@ -93,18 +107,22 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     params.set(anchorKey, newStart);
     params.delete("end");
-    router.push(`${pathname}?${params.toString()}`);
+    persistAnchor(newStart);
+    pushWithLoading(params);
   };
 
   const setEndDate = (newEnd: string) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(newEnd)) return;
     if (newEnd < budget.startDate) return;
     const params = new URLSearchParams(searchParams.toString());
-    if (!params.get(anchorKey)) params.set(anchorKey, budget.startDate);
+    if (!params.get(anchorKey)) {
+      params.set(anchorKey, budget.startDate);
+      persistAnchor(budget.startDate);
+    }
     const naturalEnd = derivePeriodEnd(budget.periodType, budget.startDate);
     if (newEnd === naturalEnd) params.delete("end");
     else params.set("end", newEnd);
-    router.push(`${pathname}?${params.toString()}`);
+    pushWithLoading(params);
   };
 
   const naturalEnd = derivePeriodEnd(budget.periodType, budget.startDate);
@@ -125,7 +143,23 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
       : "Period ended";
 
   return (
-    <div className="md:grid md:grid-cols-5 md:gap-6">
+    <>
+      {isNavPending && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-2.5 h-10 pl-3 pr-4 rounded-full bg-white border border-border-soft shadow-lg"
+        >
+          <Spinner />
+          <span className="text-[13px] font-medium text-muted">Updating…</span>
+        </div>
+      )}
+      <div
+        className={cn(
+          "md:grid md:grid-cols-5 md:gap-6 transition-opacity duration-200",
+          isNavPending && "opacity-50 pointer-events-none",
+        )}
+      >
       <div className="md:col-span-3 flex flex-col pb-4 md:pb-0">
         {/* Row 1 — selectors */}
         <div className="flex items-center gap-2 mb-3">
@@ -482,7 +516,8 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
         leftToSpend={budget.leftToSpend}
         planCategoryIds={budget.categoryBudgets.map((b) => b.categoryId)}
       />
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -739,6 +774,15 @@ function ActionBtn({
         {label}
       </span>
     </button>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="animate-spin text-sage" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" className="opacity-20" />
+      <path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
   );
 }
 

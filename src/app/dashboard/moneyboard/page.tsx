@@ -1,10 +1,16 @@
+import { cookies } from "next/headers";
 import {
   getCurrentUser,
   getCategories,
   getBudgetSummary,
   getRecurringBills,
 } from "@/server/queries/moneyboard";
-import { CURRENCIES, DEFAULT_CURRENCY } from "@/domain/moneyboard";
+import {
+  CURRENCIES,
+  DEFAULT_CURRENCY,
+  projectAnchorToToday,
+  todayDateStr,
+} from "@/domain/moneyboard";
 import type { BudgetPeriodType } from "@/domain/moneyboard";
 import { BudgetOverview } from "@/components/features/moneyboard/BudgetOverview";
 import { BackButton } from "@/components/ui/BackButton";
@@ -38,11 +44,25 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
     DEFAULT_CURRENCY;
 
   const periodType = resolvePeriodType(view);
+  const paramKey = periodType === "week" ? "wk" : periodType === "fortnight" ? "fn" : "mo";
   // Each cadence has its own start anchor, so navigating (or customising) one
   // never clobbers another's custom start — a fortnight starting 22 Jul survives
   // a trip through the monthly view and its month-by-month navigation.
   const rawAnchor = periodType === "week" ? wk : periodType === "fortnight" ? fn : mo;
-  const anchor = rawAnchor && VALID_DATE.test(rawAnchor) ? rawAnchor : undefined;
+  let anchor = rawAnchor && VALID_DATE.test(rawAnchor) ? rawAnchor : undefined;
+
+  // No URL anchor (fresh visit / after the login redirect drops the query
+  // string) → fall back to the persisted cookie so a custom start survives
+  // refresh, tab close, and re-login. Project it onto today's window so the
+  // saved cycle stays current instead of showing a stale past period.
+  if (!anchor) {
+    const cookieStore = await cookies();
+    const saved = cookieStore.get(`mb_${paramKey}`)?.value;
+    if (saved && VALID_DATE.test(saved)) {
+      anchor = projectAnchorToToday(periodType, saved, todayDateStr());
+    }
+  }
+
   const endOverride = end && VALID_DATE.test(end) ? end : undefined;
 
   // Load the budget first — it lazily materializes plan categories — so the
