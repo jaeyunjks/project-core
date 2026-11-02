@@ -464,6 +464,17 @@ export function todayDateStr(): string {
   return currentSydneyDateTime().date;
 }
 
+/** Compact transaction date: "2 Nov", or "2 Nov 2025" outside `today`'s year. */
+export function formatEntryDate(dateStr: string, locale = "en-AU", today = todayDateStr()): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "short",
+    ...(dateStr.slice(0, 4) === today.slice(0, 4) ? {} : { year: "numeric" }),
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
 // ── Accounts, forecasting, and savings goals ───────────────────────────────
 
 export type AccountType = "everyday" | "bills" | "savings" | "other";
@@ -755,7 +766,10 @@ export function sanitizeAmountInput(str: string, currency: CurrencyOption): stri
   return out;
 }
 
-/** Format money with a configurable currency. Optionally signed (+/−). */
+/**
+ * Format money with a configurable currency. Negative values always keep their
+ * "−"; `signed` also marks positives with "+", `absolute` drops the sign.
+ */
 export function formatMoney(
   amount: number,
   opts: { signed?: boolean; absolute?: boolean; currency?: CurrencyOption } = {}
@@ -767,9 +781,8 @@ export function formatMoney(
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
-  if (opts.signed) {
-    const sign = value > 0 ? "+" : value < 0 ? "−" : "";
-    return `${sign}${cur.symbol}${formatted}`;
-  }
-  return `${cur.symbol}${formatted}`;
+  // Sign from the displayed (rounded) value, so −0.001 never shows as "−A$0.00".
+  const rounded = Math.round(value * 10 ** decimals);
+  const sign = rounded < 0 ? "−" : rounded > 0 && opts.signed ? "+" : "";
+  return `${sign}${cur.symbol}${formatted}`;
 }

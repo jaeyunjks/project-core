@@ -15,6 +15,8 @@ import {
   shiftPeriodAnchor,
   sumMoney,
   billOccurrencesInPeriod,
+  formatEntryDate,
+  formatMoney,
 } from "../moneyboard";
 
 test("historical transaction keeps its actual Sydney date and time", () => {
@@ -161,4 +163,19 @@ test("category overspending reduces the overall flexible balance", () => {
   const position = calculateBudgetPosition(50, 75);
   const result = calculateFlexibleBalance({ plannedSpendable: 100, unplannedSpent: 10, categoryPositions: [position] });
   assert.deepEqual(result, { leftToSpend: 65, categoryOverspend: 25 });
+});
+
+test("transaction dates are compact and only show the year outside the current year", () => {
+  assert.equal(formatEntryDate("2026-11-02", "en-AU", "2026-11-15"), "2 Nov");
+  assert.equal(formatEntryDate("2025-12-31", "en-AU", "2026-01-01"), "31 Dec 2025");
+});
+
+test("formatMoney never hides the minus sign of a negative balance", () => {
+  assert.equal(formatMoney(-987493.77), "−A$987,493.77");
+  assert.equal(formatMoney(1250.5), "A$1,250.50");
+  assert.equal(formatMoney(-12.3, { signed: true }), "−A$12.30");
+  assert.equal(formatMoney(12.3, { signed: true }), "+A$12.30");
+  assert.equal(formatMoney(-12.3, { absolute: true }), "A$12.30");
+  assert.equal(formatMoney(-0.001), "A$0.00");
+  assert.equal(formatMoney(0, { signed: true }), "A$0.00");
 });

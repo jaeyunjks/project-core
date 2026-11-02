@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser, getCategories, getAccountOverview, getRecurringBills, getTransactionHistory } from "@/server/queries/moneyboard";
-import { CURRENCIES, DEFAULT_CURRENCY, derivePeriodEnd, todayDateStr } from "@/domain/moneyboard";
+import { CURRENCIES, DEFAULT_CURRENCY, derivePeriodEnd, formatEntryDate, todayDateStr } from "@/domain/moneyboard";
+import { TransactionFilters } from "@/components/features/moneyboard/TransactionFilters";
 import { TransactionHistoryClient } from "@/components/features/moneyboard/TransactionHistoryClient";
 
 export const metadata = { title: "Transaction history — MoneyBoard" };
@@ -48,51 +49,23 @@ export default async function TransactionHistoryPage({ searchParams }: Props) {
 
   return (
     <div className="px-5 py-5 max-w-6xl mx-auto md:px-8 md:py-8">
-      <div className="flex items-start gap-3 mb-6 min-w-0">
-        <Link href={backHref} className="w-10 h-10 rounded-full bg-white border border-border-soft flex items-center justify-center text-muted hover:text-ink" aria-label="Back to MoneyBoard">←</Link>
+      <div className="flex items-center gap-3 mb-4 md:mb-6 min-w-0">
+        <Link href={backHref} className="w-10 h-10 shrink-0 rounded-full bg-white border border-border-soft flex items-center justify-center text-muted hover:text-ink" aria-label="Back to MoneyBoard">←</Link>
         <div className="min-w-0">
-          <h1 className="text-[22px] md:text-[26px] font-semibold tracking-tight text-ink break-words">Transaction history</h1>
-          <p className="text-[13px] text-muted mt-1 break-words">Every recorded income and expense from {start} to {end}</p>
+          <h1 className="text-[20px] md:text-[26px] font-semibold tracking-tight text-ink truncate">Transaction history</h1>
+          <p className="text-[12.5px] text-muted mt-0.5 truncate">
+            <time dateTime={start}>{formatEntryDate(start, currency.locale, end)}</time> – <time dateTime={end}>{formatEntryDate(end, currency.locale, "0000")}</time> · income &amp; expenses
+          </p>
         </div>
       </div>
 
-      <form className="bg-white border border-border-soft rounded-[16px] shadow-card p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <input type="hidden" name="currency" value={currency.code} />
-        <input type="hidden" name="view" value={one(params.view) ?? "fortnight"} />
-        <label className="text-[11px] font-mono uppercase tracking-wider text-faint">Search
-          <input name="q" defaultValue={one(params.q)} placeholder="Description" className="mt-1.5 w-full h-10 px-3 rounded-[10px] border border-border-soft bg-paper text-[14px] normal-case tracking-normal font-sans text-ink outline-none focus:border-sage" />
-        </label>
-        <label className="text-[11px] font-mono uppercase tracking-wider text-faint">Type
-          <select name="kind" defaultValue={kind ?? ""} className="mt-1.5 w-full h-10 px-3 rounded-[10px] border border-border-soft bg-paper text-[14px] normal-case tracking-normal font-sans text-ink">
-            <option value="">All types</option><option value="income">Income</option><option value="expense">Expenses</option>
-          </select>
-        </label>
-        <label className="text-[11px] font-mono uppercase tracking-wider text-faint">Category
-          <select name="category" defaultValue={one(params.category) ?? ""} className="mt-1.5 w-full h-10 px-3 rounded-[10px] border border-border-soft bg-paper text-[14px] normal-case tracking-normal font-sans text-ink">
-            <option value="">All categories</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.label} · {category.kind}</option>)}
-          </select>
-        </label>
-        <label className="text-[11px] font-mono uppercase tracking-wider text-faint">Account
-          <select name="account" defaultValue={one(params.account) ?? ""} className="mt-1.5 w-full h-10 px-3 rounded-[10px] border border-border-soft bg-paper text-[14px] normal-case tracking-normal font-sans text-ink">
-            <option value="">All accounts</option><option value="unassigned">Unassigned legacy entries</option>{accountOverview.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}{account.archived ? " (archived)" : ""}</option>)}
-          </select>
-        </label>
-        <label className="text-[11px] font-mono uppercase tracking-wider text-faint">From
-          <input type="date" name="start" defaultValue={start} className="mt-1.5 w-full h-10 px-3 rounded-[10px] border border-border-soft bg-paper text-[14px] normal-case tracking-normal text-ink" />
-        </label>
-        <label className="text-[11px] font-mono uppercase tracking-wider text-faint">To
-          <input type="date" name="end" defaultValue={end} min={start} className="mt-1.5 w-full h-10 px-3 rounded-[10px] border border-border-soft bg-paper text-[14px] normal-case tracking-normal text-ink" />
-        </label>
-        <label className="text-[11px] font-mono uppercase tracking-wider text-faint">Sort
-          <select name="sort" defaultValue={sort} className="mt-1.5 w-full h-10 px-3 rounded-[10px] border border-border-soft bg-paper text-[14px] normal-case tracking-normal font-sans text-ink">
-            <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="amount-high">Amount high to low</option><option value="amount-low">Amount low to high</option>
-          </select>
-        </label>
-        <div className="flex items-end gap-2">
-          <button type="submit" className="flex-1 h-10 rounded-[10px] bg-sage text-white text-[13px] font-semibold">Apply filters</button>
-          <Link href={`/dashboard/moneyboard/transactions?start=${start}&end=${end}&currency=${currency.code}&view=${one(params.view) ?? "fortnight"}`} className="h-10 px-3 rounded-[10px] border border-border-soft flex items-center text-[13px] font-semibold text-muted">Clear</Link>
-        </div>
-      </form>
+      <TransactionFilters
+        values={{ q: one(params.q), kind, category: one(params.category), account: one(params.account), start, end, sort }}
+        currency={currency.code}
+        view={one(params.view) ?? "fortnight"}
+        categories={categories.map((category) => ({ value: category.id, label: `${category.label} · ${category.kind}` }))}
+        accounts={accountOverview.accounts.map((account) => ({ value: account.id, label: `${account.name}${account.archived ? " (archived)" : ""}` }))}
+      />
 
       <TransactionHistoryClient history={history} categories={categories} accounts={accountOverview.accounts} bills={bills} currency={currency} />
     </div>

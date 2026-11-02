@@ -21,7 +21,7 @@ function formatLongDate(dateStr: string): string {
 }
 import { CurrencySelector } from "./CurrencySelector";
 import { EntryModal } from "./EntryModal";
-import { CategoryIcon } from "./CategoryIcon";
+import { TransactionRow } from "./TransactionRow";
 import { PlanBudgetSheet } from "./PlanBudgetSheet";
 import { BillPlanningModal } from "./BillPlanningModal";
 import { AccountManagementModal } from "./AccountManagementModal";
@@ -498,58 +498,17 @@ export function BudgetOverview({ budget, categories, currency, bills, accountOve
             </div>
           ) : (
             <div className="bg-white border border-border-soft rounded-[16px] shadow-card overflow-hidden">
-              {budget.recentEntries.map((e, i) => {
-                const title = e.note?.trim() || e.category.label;
-                const meta = `${e.category.label} · ${e.account?.name ?? "Unassigned"} · ${e.date.slice(5)} · ${e.occurrenceTimeKnown ? e.time : "Time not recorded"}`;
-                // Visible line leads with when, and omits an unknown time rather
-                // than spelling it out; the full line stays in the tooltip / label.
-                const compactMeta = `${e.date.slice(5)}${e.occurrenceTimeKnown ? ` ${e.time}` : ""} · ${e.category.label} · ${e.account?.name ?? "Unassigned"}`;
-                return (
-                  <div
-                    key={e.id}
-                    className={cn(
-                      "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 px-3.5 py-2",
-                      i < budget.recentEntries.length - 1 && "border-b border-border-soft",
-                    )}
-                  >
-                    <div
-                      className="row-span-2 w-8 h-8 rounded-full flex items-center justify-center"
-                      style={{ background: "#EFE9DC" }}
-                    >
-                      <CategoryIcon icon={e.category.icon} size={15} color={e.category.color} />
-                    </div>
-                    <div className="truncate text-[14px] font-medium text-ink" title={title}>{title}</div>
-                    <span className={cn("whitespace-nowrap text-right text-[14px] font-mono font-semibold tabular-nums", e.kind === "income" ? "text-sage" : "text-ink")}>
-                      {e.kind === "income" ? "+" : "−"}{formatMoney(e.amount, { currency })}
-                    </span>
-                    <div className="relative truncate text-[11.5px] font-mono text-muted" title={meta}>
-                      <span aria-hidden>{compactMeta}</span>
-                      <span className="sr-only">{meta}</span>
-                    </div>
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditingEntry(e)}
-                        aria-label={`Edit ${title}`}
-                        title="Edit"
-                        className="relative w-9 h-8 rounded-[9px] flex items-center justify-center text-muted hover:bg-paper hover:text-sage after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']"
-                      >
-                        <PencilIcon />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteEntry(e.id)}
-                        disabled={deletingId === e.id}
-                        aria-label={`Delete ${title}`}
-                        title="Delete"
-                        className="relative w-9 h-8 rounded-[9px] flex items-center justify-center text-[#8A3F2E] hover:bg-[#8A3F2E]/8 disabled:opacity-40 after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']"
-                      >
-                        {deletingId === e.id ? <Spinner /> : <TrashIcon />}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+              {budget.recentEntries.map((e, i) => (
+                <TransactionRow
+                  key={e.id}
+                  entry={e}
+                  currency={currency}
+                  onEdit={() => setEditingEntry(e)}
+                  onDelete={() => deleteEntry(e.id)}
+                  deleting={deletingId === e.id}
+                  divider={i < budget.recentEntries.length - 1}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -892,25 +851,6 @@ function PlusIcon({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points="3 6 5 6 21 6" />
-      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
-      <path d="M10 11v6M14 11v6" />
     </svg>
   );
 }
