@@ -8,23 +8,26 @@ datasource db {
 }
 
 model User {
-  id           String      @id @default(cuid())
-  name         String
-  email        String      @unique
-  passwordHash String
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  employers    Employer[]
-  shifts       Shift[]
-  payPeriods   PayPeriod[]
-  sessions     Session[]
-  awardLevels  AwardLevel[]
-  moneyCategories MoneyCategory[]
-  moneyEntries    MoneyEntry[]
-  budgetPeriods   BudgetPeriod[]
-  recurringBills  RecurringBill[]
-  goals           Goal[]
-  goalMilestones  GoalMilestone[]
+  id                String             @id @default(cuid())
+  name              String
+  email             String             @unique
+  passwordHash      String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  employers         Employer[]
+  shifts            Shift[]
+  payPeriods        PayPeriod[]
+  sessions          Session[]
+  awardLevels       AwardLevel[]
+  moneyCategories   MoneyCategory[]
+  moneyEntries      MoneyEntry[]
+  budgetPeriods     BudgetPeriod[]
+  recurringBills    RecurringBill[]
+  financialAccounts FinancialAccount[]
+  accountTransfers  AccountTransfer[]
+  savingsGoals      SavingsGoal[]
+  goals             Goal[]
+  goalMilestones    GoalMilestone[]
 }
 
 model Session {
@@ -39,14 +42,14 @@ model Session {
 }
 
 model Employer {
-  id                  String        @id @default(cuid())
+  id                  String       @id @default(cuid())
   userId              String
   name                String
   hourlyRate          Float
-  defaultBreakMinutes Int           @default(30)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultBreakMinutes Int          @default(30)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   shifts              Shift[]
   awardLevels         AwardLevel[]
   payPeriods          PayPeriod[]
@@ -59,9 +62,9 @@ model AwardLevel {
   id          String         @id @default(cuid())
   userId      String
   employerId  String
-  code        String         // e.g. "P5"
-  description String?        // optional — "Pharmacy Assistant Grade 5"
-  baseRate    Float          // base hourly rate at weekday (100%)
+  code        String // e.g. "P5"
+  description String? // optional — "Pharmacy Assistant Grade 5"
+  baseRate    Float // base hourly rate at weekday (100%)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -92,39 +95,39 @@ model Shift {
 }
 
 model PayPeriod {
-  id         String         @id @default(cuid())
-  userId     String
-  employerId String
-  name       String?
-  startDate  String
-  endDate    String
-  status     String         @default("active")
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  employer   Employer       @relation(fields: [employerId], references: [id], onDelete: Cascade)
-  days       PayPeriodDay[]
+  id           String         @id @default(cuid())
+  userId       String
+  employerId   String
+  name         String?
+  startDate    String
+  endDate      String
+  status       String         @default("active")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employer     Employer       @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  days         PayPeriodDay[]
   moneyEntries MoneyEntry[]
 
   @@index([employerId])
 }
 
 model PayPeriodDay {
-  id            String      @id @default(cuid())
-  payPeriodId   String
-  date          String      // YYYY-MM-DD
-  workHours     Float       @default(0)
+  id           String      @id @default(cuid())
+  payPeriodId  String
+  date         String // YYYY-MM-DD
+  workHours    Float       @default(0)
   // Penalty-rate category: "weekday" | "saturday" | "sunday" | "public_holiday" | "custom"
-  dayType       String      @default("weekday")
+  dayType      String      @default("weekday")
   // Optional link to an AwardLevel; null falls back to employer.hourlyRate
-  awardLevelId  String?
+  awardLevelId String?
   // Stored rate at time of entry — not recalculated if base rate changes later
-  payRate       Float       @default(0)
-  notes         String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  payPeriod     PayPeriod   @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
-  awardLevel    AwardLevel? @relation(fields: [awardLevelId], references: [id], onDelete: SetNull)
+  payRate      Float       @default(0)
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  payPeriod    PayPeriod   @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  awardLevel   AwardLevel? @relation(fields: [awardLevelId], references: [id], onDelete: SetNull)
 
   @@index([awardLevelId])
 }
@@ -135,45 +138,102 @@ model PayPeriodDay {
 // extend (not in v1 — categories are managed system-wide for now).
 // Includes both income and expense categories distinguished by `kind`.
 model MoneyCategory {
-  id        String       @id @default(cuid())
-  userId    String
-  key       String       // stable identifier — e.g. "rent", "food", "work"
-  label     String       // display label
-  kind      String       // "income" | "expense"
-  color     String       // hex e.g. "#2D4A2E"
-  icon      String       // icon key matching CategoryIcon component
-  sortOrder Int          @default(0)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  entries   MoneyEntry[]
+  id             String          @id @default(cuid())
+  userId         String
+  key            String // stable identifier — e.g. "rent", "food", "work"
+  label          String // display label
+  kind           String // "income" | "expense"
+  color          String // hex e.g. "#2D4A2E"
+  icon           String // icon key matching CategoryIcon component
+  sortOrder      Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries        MoneyEntry[]
+  recurringBills RecurringBill[]
 
   @@unique([userId, key])
   @@index([userId, kind])
 }
 
 model MoneyEntry {
-  id          String        @id @default(cuid())
-  userId      String
-  kind        String        // "income" | "expense"
-  amount      Float         // positive value; sign comes from kind
-  currency    String        @default("AUD") // ISO 4217 code; see CURRENCIES in domain/moneyboard
-  date        String        // YYYY-MM-DD
-  categoryId  String
-  note        String?
+  id                  String            @id @default(cuid())
+  userId              String
+  kind                String // "income" | "expense"
+  amount              Float // positive value; sign comes from kind
+  currency            String            @default("AUD") // ISO 4217 code; see CURRENCIES in domain/moneyboard
+  date                String // YYYY-MM-DD
+  occurredAt          DateTime          @db.Timestamptz(3) // authoritative real-world timestamp
+  occurrenceTimeKnown Boolean           @default(true) // false for date-only legacy/imported records
+  categoryId          String
+  accountId           String?
+  recurringBillId     String?
+  note                String?
   // "manual" — user typed it; "hoursboard" — imported from a PayPeriod
-  source      String        @default("manual")
-  payPeriodId String?       // set when source == "hoursboard"
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category    MoneyCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  payPeriod   PayPeriod?    @relation(fields: [payPeriodId], references: [id], onDelete: SetNull)
+  source              String            @default("manual")
+  payPeriodId         String? // set when source == "hoursboard"
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category            MoneyCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  account             FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  recurringBill       RecurringBill?    @relation(fields: [recurringBillId], references: [id], onDelete: SetNull)
+  payPeriod           PayPeriod?        @relation(fields: [payPeriodId], references: [id], onDelete: SetNull)
 
   @@index([userId, date])
+  @@index([userId, occurredAt])
   @@index([userId, kind])
   @@index([categoryId])
+  @@index([accountId])
+  @@index([recurringBillId])
   @@index([payPeriodId])
+}
+
+// User-owned money containers. Balances are derived from openingBalance plus
+// linked transactions and transfers; no duplicated mutable balance is stored.
+model FinancialAccount {
+  id                String            @id @default(cuid())
+  userId            String
+  name              String
+  type              String            @default("everyday") // everyday | bills | savings | other
+  currency          String            @default("AUD")
+  openingBalance    Decimal           @default(0) @db.Decimal(19, 2)
+  color             String?
+  sortOrder         Int               @default(0)
+  archivedAt        DateTime?         @db.Timestamptz(3)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries           MoneyEntry[]
+  outgoingTransfers AccountTransfer[] @relation("TransferFromAccount")
+  incomingTransfers AccountTransfer[] @relation("TransferToAccount")
+  recurringBills    RecurringBill[]
+  savingsGoals      SavingsGoal[]
+
+  @@unique([userId, name, currency])
+  @@index([userId, archivedAt])
+}
+
+// A transfer is one atomic record with two owned-account references. It is not
+// normal income or spending and therefore cannot change consolidated wealth.
+model AccountTransfer {
+  id            String           @id @default(cuid())
+  userId        String
+  fromAccountId String
+  toAccountId   String
+  amount        Decimal          @db.Decimal(19, 2)
+  currency      String           @default("AUD")
+  occurredAt    DateTime         @db.Timestamptz(3)
+  note          String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromAccount   FinancialAccount @relation("TransferFromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccount     FinancialAccount @relation("TransferToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+
+  @@index([userId, occurredAt])
+  @@index([fromAccountId])
+  @@index([toAccountId])
 }
 
 // A planned budget for a specific window (week/fortnight/month).
@@ -181,9 +241,9 @@ model MoneyEntry {
 model BudgetPeriod {
   id             String          @id @default(cuid())
   userId         String
-  periodType     String          // "week" | "fortnight" | "month"
-  startDate      String          // YYYY-MM-DD, inclusive
-  endDate        String          // YYYY-MM-DD, inclusive
+  periodType     String // "week" | "fortnight" | "month"
+  startDate      String // YYYY-MM-DD, inclusive
+  endDate        String // YYYY-MM-DD, inclusive
   currency       String          @default("AUD")
   moneyIn        Float           @default(0)
   protectValue   Float           @default(0)
@@ -199,21 +259,49 @@ model BudgetPeriod {
 // A repeating bill/subscription the user wants auto-included on each new plan
 // whose periodType matches this bill's cadence.
 model RecurringBill {
-  id           String   @id @default(cuid())
-  userId       String
-  name         String
-  amount       Float    @default(0)
-  currency     String   @default("AUD")
-  cadence      String   // "week" | "fortnight" | "month"
+  id              String            @id @default(cuid())
+  userId          String
+  name            String
+  amount          Float             @default(0)
+  currency        String            @default("AUD")
+  cadence         String // "week" | "fortnight" | "month"
   // For "month" cadence: day-of-month (1..31). Ignored for week/fortnight.
-  dueDay       Int?
-  active       Boolean  @default(true)
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dueDay          Int?
+  nextPaymentDate String?
+  accountId       String?
+  categoryId      String?
+  description     String?
+  paidThroughDate String?
+  active          Boolean           @default(true)
+  sortOrder       Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account         FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  category        MoneyCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  entries         MoneyEntry[]
 
   @@index([userId, cadence])
+  @@index([accountId])
+  @@index([categoryId])
+}
+
+model SavingsGoal {
+  id           String            @id @default(cuid())
+  userId       String
+  name         String
+  targetAmount Decimal           @db.Decimal(19, 2)
+  targetDate   String
+  currency     String            @default("AUD")
+  accountId    String?
+  active       Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([userId, active])
+  @@index([accountId])
 }
 
 model CommittedItem {
@@ -233,32 +321,32 @@ model CommittedItem {
 // ─── GoalTracker ──────────────────────────────────────────────────────────────
 
 model Goal {
-  id          String          @id @default(cuid())
-  userId      String
-  title       String
-  emoji       String          @default("🎯")
+  id           String          @id @default(cuid())
+  userId       String
+  title        String
+  emoji        String          @default("🎯")
   // "numeric" — progress is a number toward a target (e.g. save $2000)
   // "checklist" — progress is completing milestones (e.g. get driver's license)
-  type        String          // "numeric" | "checklist"
+  type         String // "numeric" | "checklist"
   // "active" | "completed" | "archived"
-  status      String          @default("active")
+  status       String          @default("active")
   // Numeric goals
-  targetValue Float?          // e.g. 2000
-  currentValue Float          @default(0)
-  unit        String?         // e.g. "$", "hours", "kg"
+  targetValue  Float? // e.g. 2000
+  currentValue Float           @default(0)
+  unit         String? // e.g. "$", "hours", "kg"
   // Auto-link: pull progress from another module
   // "none" | "moneyboard-income" | "moneyboard-expense" | "moneyboard-net" | "hoursboard-hours"
-  autoSource  String          @default("none")
+  autoSource   String          @default("none")
   // Optional: currency code for money-linked goals
   autoCurrency String?
   // Deadline
-  deadline    String?         // YYYY-MM-DD, nullable for open-ended goals
+  deadline     String? // YYYY-MM-DD, nullable for open-ended goals
   // Metadata
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  completedAt DateTime?
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  milestones  GoalMilestone[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  completedAt  DateTime?
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  milestones   GoalMilestone[]
 
   @@index([userId, status])
 }

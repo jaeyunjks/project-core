@@ -1,6 +1,6 @@
 import type { MoneyCategory, MoneyEntry, PayPeriod, PayPeriodDay, Prisma } from "@prisma/client";
 import { db } from "@/server/db";
-import { requireUser } from "@/server/auth";
+import { addDays, formatDateStr, parseLocalDate } from "@/lib/utils";
 import {
   currentMonthKey,
   monthRange,
@@ -13,6 +13,17 @@ import {
   periodDayCounts,
   guessCategoryIcon,
   DEFAULT_CATEGORIES,
+  localDateTimeToUtc,
+  occurrenceLocalParts,
+  calculateRecordedBalance,
+  calculateBudgetPosition,
+  calculateRecurringBillCoverage,
+  calculateFlexibleBalance,
+  calculateSavingsForecast,
+  calculateSavingsGoal,
+  fortnightsUntil,
+  sumMoney,
+  todayDateStr,
 } from "@/domain/moneyboard";
 import type { BudgetPeriodType, PeriodWindow } from "@/domain/moneyboard";
 import type {
@@ -28,6 +39,13 @@ import type {
   CategoryBudgetRow,
   CommittedItemDisplay,
   RecurringBillDisplay,
+  FinancialAccountDisplay,
+  AccountOverview,
+  AccountTransferDisplay,
+  TransactionHistoryPage,
+  BillFundingSummary,
+  SavingsForecastDisplay,
+  SavingsGoalDisplay,
 } from "@/types";
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
@@ -45,20 +63,45 @@ function toCategoryDisplay(c: MoneyCategory): MoneyCategoryDisplay {
 }
 
 type EntryWithCat = Prisma.MoneyEntryGetPayload<{
-  include: { category: true };
+  include: { category: true; account: true };
 }>;
 
 function toEntryDisplay(e: EntryWithCat): MoneyEntryDisplay {
+  const local = occurrenceLocalParts(e.occurredAt);
   return {
     id: e.id,
     kind: e.kind as "income" | "expense",
     amount: e.amount,
     currency: e.currency,
-    date: e.date,
+    date: local.date,
+    time: local.time,
+    occurrenceTimeKnown: e.occurrenceTimeKnown,
+    occurredAt: e.occurredAt.toISOString(),
+    createdAt: e.createdAt.toISOString(),
+    updatedAt: e.updatedAt.toISOString(),
     note: e.note,
     source: e.source as "manual" | "hoursboard",
     payPeriodId: e.payPeriodId,
+    recurringBillId: e.recurringBillId,
+    account: e.account
+      ? {
+          id: e.account.id,
+          name: e.account.name,
+          type: e.account.type as "everyday" | "bills" | "savings" | "other",
+          currency: e.account.currency,
+        }
+      : null,
     category: toCategoryDisplay(e.category),
+  };
+}
+
+function occurrenceRange(start: string, end: string): { gte: Date; lt: Date } {
+  const endDate = new Date(`${end}T12:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate() + 1);
+  const nextDate = endDate.toISOString().slice(0, 10);
+  return {
+    gte: localDateTimeToUtc(start, "00:00"),
+    lt: localDateTimeToUtc(nextDate, "00:00"),
   };
 }
 
@@ -118,7 +161,7 @@ export async function getMonthNavOptions(
   for (const mk of sorted) {
     const { start, end } = monthRange(mk);
     const entries = await db.moneyEntry.findMany({
-      where: { userId, currency, date: { gte: start, lte: end } },
+      where: { userId, currency, occurredAt: occurrenceRange(start, end) },
       select: { kind: true, amount: true },
     });
     let income = 0;
@@ -147,9 +190,9 @@ export async function getMonthlyMoneyData(
   const { start, end } = monthRange(monthKey);
 
   const entriesRaw = await db.moneyEntry.findMany({
-    where: { userId, currency, date: { gte: start, lte: end } },
-    include: { category: true },
-    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    where: { userId, currency, occurredAt: occurrenceRange(start, end) },
+    include: { category: true, account: true },
+    orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
   });
 
   const entries = entriesRaw.map(toEntryDisplay);
@@ -238,9 +281,9 @@ export async function getDateRangeMoneyData(
   currency: string
 ): Promise<MonthlyMoneySummary> {
   const entriesRaw = await db.moneyEntry.findMany({
-    where: { userId, currency, date: { gte: start, lte: end } },
-    include: { category: true },
-    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    where: { userId, currency, occurredAt: occurrenceRange(start, end) },
+    include: { category: true, account: true },
+    orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
   });
 
   const entries = entriesRaw.map(toEntryDisplay);
@@ -345,7 +388,11 @@ export interface MoneyEntryInput {
   amount: number;            // positive
   currency: string;          // ISO 4217 code
   date: string;              // YYYY-MM-DD
+  time: string;              // HH:mm Australia/Sydney
+  occurrenceTimeKnown?: boolean;
   categoryId: string;
+  accountId: string | null;
+  recurringBillId?: string | null;
   note: string | null;
   source?: "manual" | "hoursboard";
   payPeriodId?: string | null;
@@ -361,6 +408,18 @@ export async function createMoneyEntry(
   if (cat.kind !== input.kind) {
     throw new Error(`Category "${cat.label}" can't be used for ${input.kind}.`);
   }
+  const account = input.accountId
+    ? await db.financialAccount.findUnique({ where: { id: input.accountId } })
+    : null;
+  if (input.accountId && (!account || account.userId !== userId || account.archivedAt)) {
+    throw new Error("Invalid account.");
+  }
+  if (account && account.currency !== input.currency) throw new Error("Account currency does not match entry currency.");
+  if (input.recurringBillId) {
+    const bill = await db.recurringBill.findUnique({ where: { id: input.recurringBillId } });
+    if (!bill || bill.userId !== userId) throw new Error("Invalid bill.");
+  }
+  const occurredAt = localDateTimeToUtc(input.date, input.time);
 
   const entry = await db.moneyEntry.create({
     data: {
@@ -369,12 +428,16 @@ export async function createMoneyEntry(
       amount: Math.round(Math.abs(input.amount) * 100) / 100,
       currency: input.currency,
       date: input.date,
+      occurredAt,
+      occurrenceTimeKnown: input.occurrenceTimeKnown ?? true,
       categoryId: input.categoryId,
+      accountId: input.accountId,
+      recurringBillId: input.recurringBillId ?? null,
       note: input.note?.trim() || null,
       source: input.source ?? "manual",
       payPeriodId: input.payPeriodId ?? null,
     },
-    include: { category: true },
+    include: { category: true, account: true },
   });
   return toEntryDisplay(entry);
 }
@@ -391,6 +454,14 @@ export async function updateMoneyEntry(
   if (cat.kind !== input.kind) {
     throw new Error(`Category "${cat.label}" can't be used for ${input.kind}.`);
   }
+  const account = input.accountId
+    ? await db.financialAccount.findUnique({ where: { id: input.accountId } })
+    : null;
+  if (input.accountId && (!account || account.userId !== userId || account.archivedAt)) {
+    throw new Error("Invalid account.");
+  }
+  if (account && account.currency !== input.currency) throw new Error("Account currency does not match entry currency.");
+  const occurredAt = localDateTimeToUtc(input.date, input.time);
 
   const entry = await db.moneyEntry.update({
     where: { id },
@@ -399,10 +470,14 @@ export async function updateMoneyEntry(
       amount: Math.round(Math.abs(input.amount) * 100) / 100,
       currency: input.currency,
       date: input.date,
+      occurredAt,
+      occurrenceTimeKnown: input.occurrenceTimeKnown ?? existing.occurrenceTimeKnown,
       categoryId: input.categoryId,
+      accountId: input.accountId,
+      recurringBillId: input.recurringBillId ?? existing.recurringBillId,
       note: input.note?.trim() || null,
     },
-    include: { category: true },
+    include: { category: true, account: true },
   });
   return toEntryDisplay(entry);
 }
@@ -416,7 +491,7 @@ export async function deleteMoneyEntry(id: string, userId: string): Promise<void
 export async function duplicateMoneyEntry(id: string, userId: string): Promise<MoneyEntryDisplay> {
   const src = await db.moneyEntry.findUnique({
     where: { id },
-    include: { category: true },
+    include: { category: true, account: true },
   });
   if (!src || src.userId !== userId) throw new Error("Entry not found.");
   const copy = await db.moneyEntry.create({
@@ -426,11 +501,15 @@ export async function duplicateMoneyEntry(id: string, userId: string): Promise<M
       amount: src.amount,
       currency: src.currency,
       date: src.date,
+      occurredAt: src.occurredAt,
+      occurrenceTimeKnown: src.occurrenceTimeKnown,
       categoryId: src.categoryId,
+      accountId: src.accountId,
+      recurringBillId: src.recurringBillId,
       note: src.note,
       source: "manual",
     },
-    include: { category: true },
+    include: { category: true, account: true },
   });
   return toEntryDisplay(copy);
 }
@@ -523,7 +602,7 @@ export async function importHoursBoardPeriod(
   // Idempotency: if already imported, return the existing entry
   const existing = await db.moneyEntry.findFirst({
     where: { userId, payPeriodId, source: "hoursboard" },
-    include: { category: true },
+    include: { category: true, account: true },
   });
   if (existing) return toEntryDisplay(existing);
 
@@ -539,7 +618,10 @@ export async function importHoursBoardPeriod(
     amount: estimatedGross,
     currency: "AUD", // HoursBoard pay periods are tracked in AUD
     date: period.endDate,
+    time: "12:00",
+    occurrenceTimeKnown: false,
     categoryId: workCat.id,
+    accountId: null,
     note,
     source: "hoursboard",
     payPeriodId,
@@ -676,29 +758,13 @@ export async function getBudgetSummary(
   // already on the saved plan. Same rules as the client's Plan sheet auto-fill.
   const activeBills = await db.recurringBill.findMany({
     where: { userId, currency, active: true },
+    include: { category: true },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
   const savedNames = new Set(savedItems.map((it) => it.name.trim().toLowerCase()));
   const virtualBillItems: CommittedItemDisplay[] = [];
   for (const b of activeBills) {
-    const cadence = b.cadence as BudgetPeriodType;
-    // How many of this bill land in the window:
-    //  • same cadence → 1
-    //  • monthly bill with a due-day that falls inside a shorter window → 1
-    //  • shorter cadence than the period (weekly on a month, etc.) → scaled up
-    //    (×2 / ×4), so its full cost for the period is committed & budgeted
-    let occurrences: number;
-    if (cadence === periodType) {
-      occurrences = 1;
-    } else if (
-      cadence === "month" &&
-      b.dueDay != null &&
-      monthlyBillHitsWindow(b.dueDay, win.startDate, win.endDate)
-    ) {
-      occurrences = 1;
-    } else {
-      occurrences = billOccurrencesInPeriod(cadence, periodType);
-    }
+    const occurrences = billOccurrencesForWindow(b, win.startDate, win.endDate, periodType).count;
     if (occurrences <= 0) continue;
     const displayName =
       b.cadence === "month" && b.dueDay ? `${b.name} · ${ordinalDay(b.dueDay)}` : b.name;
@@ -707,7 +773,7 @@ export async function getBudgetSummary(
       id: `auto-bill-${b.id}`,
       name: displayName,
       amount: Math.round(b.amount * occurrences * 100) / 100,
-      recur: b.cadence === "week" ? "Weekly" : b.cadence === "month" ? "Monthly" : "Fortnightly",
+      recur: b.cadence === "week" ? "Weekly" : b.cadence === "month" ? "Monthly" : b.cadence === "year" ? "Yearly" : "Fortnightly",
       sortOrder: 9000 + virtualBillItems.length,
     });
   }
@@ -721,10 +787,10 @@ export async function getBudgetSummary(
       userId,
       currency,
       kind: "expense",
-      date: { gte: win.startDate, lte: win.endDate },
+      occurredAt: occurrenceRange(win.startDate, win.endDate),
     },
-    include: { category: true },
-    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    include: { category: true, account: true },
+    orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
   });
   const expenses = expensesRaw.map(toEntryDisplay);
 
@@ -762,6 +828,10 @@ export async function getBudgetSummary(
   });
   const catByLabel = new Map<string, { id: string; color: string }>();
   for (const c of expenseCats) catByLabel.set(c.label.trim().toLowerCase(), { id: c.id, color: c.color });
+  const billCategoryByName = new Map<string, { id: string; color: string }>();
+  for (const bill of activeBills) {
+    if (bill.category) billCategoryByName.set(bill.name.trim().toLowerCase(), { id: bill.category.id, color: bill.category.color });
+  }
 
   // Backfill a meaningful icon for previously auto-created plan categories that
   // still carry the generic placeholder ("dots"). Leaves "Other" alone.
@@ -780,6 +850,11 @@ export async function getBudgetSummary(
     const baseName = it.name.split(" · ")[0].trim();
     if (!baseName || baseName === "Item") continue;
     const key = baseName.toLowerCase();
+    const linkedBillCategory = billCategoryByName.get(key);
+    if (linkedBillCategory) {
+      catByLabel.set(key, linkedBillCategory);
+      continue;
+    }
     if (catByLabel.has(key)) continue;
     maxSort += 1;
     const created = await db.moneyCategory.create({
@@ -799,24 +874,52 @@ export async function getBudgetSummary(
   const spentByCatId = new Map<string, number>();
   for (const seg of byCat.values()) spentByCatId.set(seg.categoryId, seg.amount);
 
-  // Auto-count applicable bills as "paid" spend in their category, so the bar
-  // fills without a manual entry. Weekly/fortnightly (no exact date) pay
-  // immediately; monthly with a due day pays once that date has arrived.
-  const billByBase = new Map<string, (typeof activeBills)[number]>();
-  for (const b of activeBills) billByBase.set(b.name.trim().toLowerCase(), b);
-  const billPaidByCatId = new Map<string, number>();
-  let billPaidTotal = 0;
-  for (const it of committedItems) {
-    const baseName = it.name.split(" · ")[0].trim();
-    const bill = billByBase.get(baseName.toLowerCase());
-    if (!bill) continue;
-    if (!billPaidForWindow(bill, win.startDate, win.endDate, today)) continue;
-    const cat = catByLabel.get(baseName.toLowerCase());
-    if (!cat) continue;
-    const amt = Number(it.amount) || 0;
-    spentByCatId.set(cat.id, (spentByCatId.get(cat.id) ?? 0) + amt);
-    billPaidByCatId.set(cat.id, (billPaidByCatId.get(cat.id) ?? 0) + amt);
-    billPaidTotal += amt;
+  // Linked expenses remain real spending. Eligible recurring bills may also
+  // provide planning-only coverage, matching the original budget workflow.
+  // Only the uncovered remainder is added, so a linked expense is never
+  // counted twice and no MoneyEntry or account balance is fabricated.
+  const actualPaidByBillId = new Map<string, number>();
+  for (const expense of expenses) {
+    if (!expense.recurringBillId) continue;
+    actualPaidByBillId.set(
+      expense.recurringBillId,
+      sumMoney([(actualPaidByBillId.get(expense.recurringBillId) ?? 0), expense.amount]),
+    );
+  }
+
+  const billByBaseName = new Map(activeBills.map((bill) => [bill.name.trim().toLowerCase(), bill]));
+  const billCoveredByCatId = new Map<string, number>();
+  const planningCoverageByCatId = new Map<string, number>();
+  const processedBillIds = new Set<string>();
+  for (const item of committedItems) {
+    const baseName = item.name.split(" · ")[0].trim();
+    const bill = billByBaseName.get(baseName.toLowerCase());
+    const category = catByLabel.get(baseName.toLowerCase());
+    if (!bill || !category || processedBillIds.has(bill.id)) continue;
+    processedBillIds.add(bill.id);
+
+    const automaticallyCovered =
+      billPaidForWindow(bill, win.startDate, win.endDate, today) ||
+      (!!bill.paidThroughDate && bill.paidThroughDate >= win.endDate);
+    const coverage = calculateRecurringBillCoverage({
+      committedAmount: Number(item.amount) || 0,
+      actualPaidAmount: actualPaidByBillId.get(bill.id) ?? 0,
+      automaticallyCovered,
+    });
+    if (coverage.planningCoverage > 0) {
+      planningCoverageByCatId.set(
+        category.id,
+        sumMoney([(planningCoverageByCatId.get(category.id) ?? 0), coverage.planningCoverage]),
+      );
+      spentByCatId.set(
+        category.id,
+        sumMoney([(spentByCatId.get(category.id) ?? 0), coverage.planningCoverage]),
+      );
+    }
+    billCoveredByCatId.set(
+      category.id,
+      sumMoney([(billCoveredByCatId.get(category.id) ?? 0), coverage.coveredAmount]),
+    );
   }
 
   // Sum committed-item allocations per matched category (dedupe by category).
@@ -832,9 +935,12 @@ export async function getBudgetSummary(
   }
   const allocatedCategoryIds = new Set(allocMap.keys());
   const categoryBudgets: CategoryBudgetRow[] = [...allocMap.entries()].map(([catId, a]) => {
-    const budgeted = Math.round(a.budgeted * 100) / 100;
-    const catSpent = Math.round((spentByCatId.get(catId) ?? 0) * 100) / 100;
-    const billPaid = Math.round((billPaidByCatId.get(catId) ?? 0) * 100) / 100;
+    const position = calculateBudgetPosition(a.budgeted, spentByCatId.get(catId) ?? 0);
+    const budgeted = position.budgeted;
+    const catSpent = position.spent;
+    const billCovered = Math.round((billCoveredByCatId.get(catId) ?? 0) * 100) / 100;
+    const planningCoverage = Math.round((planningCoverageByCatId.get(catId) ?? 0) * 100) / 100;
+    const actualSpent = Math.round((byCat.get(catId)?.amount ?? 0) * 100) / 100;
     return {
       key: catId,
       name: a.name,
@@ -842,10 +948,12 @@ export async function getBudgetSummary(
       color: a.color,
       budgeted,
       spent: catSpent,
-      remaining: Math.round((budgeted - catSpent) * 100) / 100,
-      percentUsed: budgeted > 0 ? Math.max(0, Math.min(100, Math.round((catSpent / budgeted) * 100))) : 0,
-      overBudget: catSpent > budgeted,
-      paid: budgeted > 0 && billPaid >= budgeted - 0.005,
+      actualSpent,
+      planningCoverage,
+      remaining: position.remaining,
+      percentUsed: Math.max(0, Math.min(100, Math.round(position.percentUsed))),
+      overBudget: position.overBudget,
+      paid: budgeted > 0 && billCovered >= budgeted - 0.005,
     };
   });
 
@@ -856,16 +964,35 @@ export async function getBudgetSummary(
     if (!allocatedCategoryIds.has(e.category.id)) unplannedSpentRaw += e.amount;
   }
   const unplannedSpent = Math.round(unplannedSpentRaw * 100) / 100;
-  const plannedSpent = Math.round((spent - unplannedSpentRaw + billPaidTotal) * 100) / 100;
-  const totalSpent = Math.round((spent + billPaidTotal) * 100) / 100;
+  const plannedSpent = Math.round((spent - unplannedSpentRaw) * 100) / 100;
+  const totalSpent = Math.round(spent * 100) / 100;
+  const flexible = calculateFlexibleBalance({
+    plannedSpendable,
+    unplannedSpent: unplannedSpentRaw,
+    categoryPositions: categoryBudgets,
+  });
+  const categoryOverspend = flexible.categoryOverspend;
+  const negativePlanCapacity = Math.max(0, -plannedSpendable);
+  const overspentAmount = sumMoney([categoryOverspend, negativePlanCapacity]);
 
-  const leftToSpend = Math.round((plannedSpendable - unplannedSpentRaw) * 100) / 100;
+  const leftToSpend = flexible.leftToSpend;
   const perDay = counts.daysLeft > 0
     ? Math.max(0, leftToSpend) / counts.daysLeft
     : Math.max(0, leftToSpend);
   const progressPercent = plannedSpendable > 0
-    ? Math.max(0, Math.min(100, Math.round((unplannedSpentRaw / plannedSpendable) * 100)))
+    ? Math.max(0, Math.min(100, Math.round(((unplannedSpentRaw + categoryOverspend) / plannedSpendable) * 100)))
     : 0;
+  const transactionCount = await db.moneyEntry.count({
+    where: { userId, currency, occurredAt: occurrenceRange(win.startDate, win.endDate) },
+  });
+  const recentEntries = (
+    await db.moneyEntry.findMany({
+      where: { userId, currency, occurredAt: occurrenceRange(win.startDate, win.endDate) },
+      include: { category: true, account: true },
+      orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+      take: RECENT_ENTRIES_LIMIT,
+    })
+  ).map(toEntryDisplay);
 
   return {
     id: plan?.id ?? null,
@@ -892,9 +1019,12 @@ export async function getBudgetSummary(
     leftToSpend,
     perDay: Math.round(perDay * 100) / 100,
     progressPercent,
+    overspentAmount,
+    overallOverBudget: leftToSpend < 0 || categoryBudgets.some((row) => row.overBudget),
+    transactionCount,
     categorySegments,
     categoryBudgets,
-    recentEntries: expenses.slice(0, RECENT_ENTRIES_LIMIT),
+    recentEntries,
   };
 }
 
@@ -987,6 +1117,7 @@ export async function getRecurringBills(
 ): Promise<RecurringBillDisplay[]> {
   const rows = await db.recurringBill.findMany({
     where: { userId, currency },
+    include: { account: true, category: true },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
   return rows.map((r) => ({
@@ -994,8 +1125,15 @@ export async function getRecurringBills(
     name: r.name,
     amount: r.amount,
     currency: r.currency,
-    cadence: r.cadence as "week" | "fortnight" | "month",
+    cadence: r.cadence as "week" | "fortnight" | "month" | "year",
     dueDay: r.dueDay,
+    nextPaymentDate: r.nextPaymentDate,
+    accountId: r.accountId,
+    accountName: r.account?.name ?? null,
+    categoryId: r.categoryId,
+    categoryName: r.category?.label ?? null,
+    description: r.description,
+    paidThroughDate: r.paidThroughDate,
     active: r.active,
     sortOrder: r.sortOrder,
   }));
@@ -1005,8 +1143,13 @@ export interface RecurringBillInput {
   name: string;
   amount: number;
   currency: string;
-  cadence: "week" | "fortnight" | "month";
+  cadence: "week" | "fortnight" | "month" | "year";
   dueDay?: number | null;
+  nextPaymentDate?: string | null;
+  accountId?: string | null;
+  categoryId?: string | null;
+  description?: string | null;
+  paidThroughDate?: string | null;
   active?: boolean;
 }
 
@@ -1021,6 +1164,14 @@ export async function createRecurringBill(userId: string, input: RecurringBillIn
     where: { userId },
     _max: { sortOrder: true },
   });
+  if (input.accountId) {
+    const account = await db.financialAccount.findUnique({ where: { id: input.accountId } });
+    if (!account || account.userId !== userId || account.currency !== input.currency) throw new Error("Invalid payment account.");
+  }
+  if (input.categoryId) {
+    const category = await db.moneyCategory.findUnique({ where: { id: input.categoryId } });
+    if (!category || category.userId !== userId || category.kind !== "expense") throw new Error("Invalid bill category.");
+  }
   await db.recurringBill.create({
     data: {
       userId,
@@ -1029,6 +1180,11 @@ export async function createRecurringBill(userId: string, input: RecurringBillIn
       currency: input.currency,
       cadence: input.cadence,
       dueDay: cleanBillDueDay(input),
+      nextPaymentDate: input.nextPaymentDate || null,
+      accountId: input.accountId || null,
+      categoryId: input.categoryId || null,
+      description: input.description?.trim() || null,
+      paidThroughDate: input.paidThroughDate || null,
       active: input.active ?? true,
       sortOrder: (max._max.sortOrder ?? -1) + 1,
     },
@@ -1042,6 +1198,14 @@ export async function updateRecurringBill(
 ): Promise<void> {
   const existing = await db.recurringBill.findUnique({ where: { id } });
   if (!existing || existing.userId !== userId) throw new Error("Bill not found.");
+  if (input.accountId) {
+    const account = await db.financialAccount.findUnique({ where: { id: input.accountId } });
+    if (!account || account.userId !== userId || account.currency !== input.currency) throw new Error("Invalid payment account.");
+  }
+  if (input.categoryId) {
+    const category = await db.moneyCategory.findUnique({ where: { id: input.categoryId } });
+    if (!category || category.userId !== userId || category.kind !== "expense") throw new Error("Invalid bill category.");
+  }
   await db.recurringBill.update({
     where: { id },
     data: {
@@ -1050,6 +1214,11 @@ export async function updateRecurringBill(
       currency: input.currency,
       cadence: input.cadence,
       dueDay: cleanBillDueDay(input),
+      nextPaymentDate: input.nextPaymentDate || null,
+      accountId: input.accountId || null,
+      categoryId: input.categoryId || null,
+      description: input.description?.trim() || null,
+      paidThroughDate: input.paidThroughDate || null,
       active: input.active ?? existing.active,
     },
   });
@@ -1061,9 +1230,475 @@ export async function deleteRecurringBill(id: string, userId: string): Promise<v
   await db.recurringBill.delete({ where: { id } });
 }
 
+// ── Financial accounts and transfers ───────────────────────────────────────
+
+export interface FinancialAccountInput {
+  name: string;
+  type: "everyday" | "bills" | "savings" | "other";
+  currency: string;
+  openingBalance: number;
+  color?: string | null;
+}
+
+async function ensureDefaultAccount(userId: string, currency: string): Promise<void> {
+  const count = await db.financialAccount.count({ where: { userId, currency } });
+  if (count > 0) return;
+  await db.financialAccount.upsert({
+    where: { userId_name_currency: { userId, name: "Everyday", currency } },
+    create: { userId, name: "Everyday", type: "everyday", currency, openingBalance: 0 },
+    update: {},
+  });
+}
+
+export async function getAccountOverview(
+  userId: string,
+  currency: string,
+  includeArchived = false,
+): Promise<AccountOverview> {
+  await ensureDefaultAccount(userId, currency);
+  const accounts = await db.financialAccount.findMany({
+    where: { userId, currency, ...(includeArchived ? {} : { archivedAt: null }) },
+    include: {
+      entries: { select: { kind: true, amount: true } },
+      incomingTransfers: { select: { amount: true } },
+      outgoingTransfers: { select: { amount: true } },
+    },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+
+  const display: FinancialAccountDisplay[] = accounts.map((account) => {
+    const currentBalance = calculateRecordedBalance({
+      openingBalance: Number(account.openingBalance),
+      income: account.entries.filter((e) => e.kind === "income").map((e) => e.amount),
+      expenses: account.entries.filter((e) => e.kind === "expense").map((e) => e.amount),
+      transfersIn: account.incomingTransfers.map((t) => Number(t.amount)),
+      transfersOut: account.outgoingTransfers.map((t) => Number(t.amount)),
+    });
+    return {
+      id: account.id,
+      name: account.name,
+      type: account.type as FinancialAccountDisplay["type"],
+      currency: account.currency,
+      openingBalance: Number(account.openingBalance),
+      currentBalance,
+      color: account.color,
+      sortOrder: account.sortOrder,
+      archived: !!account.archivedAt,
+      transactionCount: account.entries.length,
+    };
+  });
+
+  const recent = await db.accountTransfer.findMany({
+    where: { userId, currency },
+    include: { fromAccount: true, toAccount: true },
+    orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+    take: 8,
+  });
+  const recentTransfers: AccountTransferDisplay[] = recent.map((transfer) => {
+    const local = occurrenceLocalParts(transfer.occurredAt);
+    return {
+      id: transfer.id,
+      fromAccountId: transfer.fromAccountId,
+      fromAccountName: transfer.fromAccount.name,
+      toAccountId: transfer.toAccountId,
+      toAccountName: transfer.toAccount.name,
+      amount: Number(transfer.amount),
+      currency: transfer.currency,
+      occurredAt: transfer.occurredAt.toISOString(),
+      date: local.date,
+      time: local.time,
+      note: transfer.note,
+      createdAt: transfer.createdAt.toISOString(),
+    };
+  });
+
+  const savingsIds = new Set(display.filter((a) => a.type === "savings").map((a) => a.id));
+  const contributionTransfers = await db.accountTransfer.findMany({
+    where: {
+      userId,
+      currency,
+      OR: [{ fromAccountId: { in: [...savingsIds] } }, { toAccountId: { in: [...savingsIds] } }],
+    },
+    select: { fromAccountId: true, toAccountId: true, amount: true },
+  });
+  const contributionCents = contributionTransfers.reduce((sum, transfer) => {
+    const intoSavings = savingsIds.has(transfer.toAccountId) && !savingsIds.has(transfer.fromAccountId);
+    const outOfSavings = savingsIds.has(transfer.fromAccountId) && !savingsIds.has(transfer.toAccountId);
+    return sum + (intoSavings ? Math.round(Number(transfer.amount) * 100) : 0) - (outOfSavings ? Math.round(Number(transfer.amount) * 100) : 0);
+  }, 0);
+
+  return {
+    accounts: display,
+    recentTransfers,
+    totalRecordedBalance: sumMoney(display.map((account) => account.currentBalance)),
+    totalSavings: sumMoney(display.filter((account) => account.type === "savings").map((account) => account.currentBalance)),
+    actualSavingsContributions: Math.round(contributionCents) / 100,
+    unassignedTransactionCount: await db.moneyEntry.count({ where: { userId, currency, accountId: null } }),
+  };
+}
+
+export async function createFinancialAccount(userId: string, input: FinancialAccountInput): Promise<string> {
+  const max = await db.financialAccount.aggregate({ where: { userId }, _max: { sortOrder: true } });
+  const account = await db.financialAccount.create({
+    data: {
+      userId,
+      name: input.name.trim(),
+      type: input.type,
+      currency: input.currency,
+      openingBalance: input.openingBalance.toFixed(2),
+      color: input.color || null,
+      sortOrder: (max._max.sortOrder ?? -1) + 1,
+    },
+  });
+  return account.id;
+}
+
+export async function updateFinancialAccount(
+  id: string,
+  userId: string,
+  input: FinancialAccountInput,
+): Promise<void> {
+  const existing = await db.financialAccount.findUnique({ where: { id } });
+  if (!existing || existing.userId !== userId) throw new Error("Account not found.");
+  await db.financialAccount.update({
+    where: { id },
+    data: {
+      name: input.name.trim(),
+      type: input.type,
+      openingBalance: input.openingBalance.toFixed(2),
+      color: input.color || null,
+    },
+  });
+}
+
+export async function setFinancialAccountArchived(id: string, userId: string, archived: boolean): Promise<void> {
+  const existing = await db.financialAccount.findUnique({ where: { id } });
+  if (!existing || existing.userId !== userId) throw new Error("Account not found.");
+  await db.financialAccount.update({ where: { id }, data: { archivedAt: archived ? new Date() : null } });
+}
+
+export async function createAccountTransfer(
+  userId: string,
+  input: { fromAccountId: string; toAccountId: string; amount: number; date: string; time: string; note: string | null },
+): Promise<string> {
+  if (input.fromAccountId === input.toAccountId) throw new Error("Choose two different accounts.");
+  return db.$transaction(async (tx) => {
+    const [from, to] = await Promise.all([
+      tx.financialAccount.findUnique({ where: { id: input.fromAccountId } }),
+      tx.financialAccount.findUnique({ where: { id: input.toAccountId } }),
+    ]);
+    if (!from || !to || from.userId !== userId || to.userId !== userId) throw new Error("Account not found.");
+    if (from.archivedAt || to.archivedAt) throw new Error("Archived accounts cannot be used for new transfers.");
+    if (from.currency !== to.currency) throw new Error("Transfers require accounts in the same currency.");
+    const transfer = await tx.accountTransfer.create({
+      data: {
+        userId,
+        fromAccountId: from.id,
+        toAccountId: to.id,
+        amount: input.amount.toFixed(2),
+        currency: from.currency,
+        occurredAt: localDateTimeToUtc(input.date, input.time),
+        note: input.note?.trim() || null,
+      },
+    });
+    return transfer.id;
+  });
+}
+
+// ── Complete transaction history ───────────────────────────────────────────
+
+export interface TransactionHistoryFilters {
+  start: string;
+  end: string;
+  currency: string;
+  kind?: "income" | "expense";
+  categoryId?: string;
+  accountId?: string;
+  search?: string;
+  sort?: "newest" | "oldest" | "amount-high" | "amount-low";
+  page?: number;
+  pageSize?: number;
+}
+
+export async function getTransactionHistory(
+  userId: string,
+  filters: TransactionHistoryFilters,
+): Promise<TransactionHistoryPage> {
+  const pageSize = Math.max(10, Math.min(100, filters.pageSize ?? 25));
+  const page = Math.max(1, filters.page ?? 1);
+  const where: Prisma.MoneyEntryWhereInput = {
+    userId,
+    currency: filters.currency,
+    occurredAt: occurrenceRange(filters.start, filters.end),
+    ...(filters.kind ? { kind: filters.kind } : {}),
+    ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+    ...(filters.accountId === "unassigned"
+      ? { accountId: null }
+      : filters.accountId
+        ? { accountId: filters.accountId }
+        : {}),
+    ...(filters.search ? { note: { contains: filters.search, mode: "insensitive" } } : {}),
+  };
+  const orderBy: Prisma.MoneyEntryOrderByWithRelationInput[] =
+    filters.sort === "oldest"
+      ? [{ occurredAt: "asc" }, { createdAt: "asc" }]
+      : filters.sort === "amount-high"
+        ? [{ amount: "desc" }, { occurredAt: "desc" }]
+        : filters.sort === "amount-low"
+          ? [{ amount: "asc" }, { occurredAt: "desc" }]
+          : [{ occurredAt: "desc" }, { createdAt: "desc" }];
+  const [total, rows] = await Promise.all([
+    db.moneyEntry.count({ where }),
+    db.moneyEntry.findMany({
+      where,
+      include: { category: true, account: true },
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+  return {
+    entries: rows.map(toEntryDisplay),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+// ── Bill funding ────────────────────────────────────────────────────────────
+
+function addBillCadence(dateStr: string, cadence: string): string {
+  const date = parseLocalDate(dateStr);
+  if (cadence === "week") return formatDateStr(addDays(date, 7));
+  if (cadence === "fortnight") return formatDateStr(addDays(date, 14));
+  const day = date.getDate();
+  const months = cadence === "year" ? 12 : 1;
+  const target = new Date(date.getFullYear(), date.getMonth() + months, 1);
+  const last = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, last));
+  return formatDateStr(target);
+}
+
+function billOccurrencesForWindow(
+  bill: { cadence: string; nextPaymentDate: string | null; dueDay: number | null },
+  start: string,
+  end: string,
+  periodType: BudgetPeriodType,
+): { count: number; dates: string[] } {
+  if (bill.nextPaymentDate) {
+    let cursor = bill.nextPaymentDate;
+    let guard = 0;
+    while (cursor < start && guard < 600) {
+      cursor = addBillCadence(cursor, bill.cadence);
+      guard += 1;
+    }
+    const dates: string[] = [];
+    while (cursor <= end && guard < 650) {
+      dates.push(cursor);
+      cursor = addBillCadence(cursor, bill.cadence);
+      guard += 1;
+    }
+    return { count: dates.length, dates };
+  }
+  if (bill.cadence === "year") return { count: 0, dates: [] };
+  if (bill.cadence === "month" && bill.dueDay != null) {
+    const due = monthlyDueDateInWindow(bill.dueDay, start, end);
+    return { count: due ? 1 : 0, dates: due ? [due] : [] };
+  }
+  const count = bill.cadence === periodType ? 1 : billOccurrencesInPeriod(bill.cadence as BudgetPeriodType, periodType);
+  return { count, dates: [] };
+}
+
+export async function getBillFundingSummary(
+  userId: string,
+  periodType: BudgetPeriodType,
+  start: string,
+  end: string,
+  currency: string,
+  accountsOverview?: AccountOverview,
+): Promise<BillFundingSummary> {
+  const overview = accountsOverview ?? await getAccountOverview(userId, currency);
+  const bills = await db.recurringBill.findMany({
+    where: { userId, currency, active: true },
+    include: { account: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  const paidEntries = await db.moneyEntry.findMany({
+    where: {
+      userId,
+      currency,
+      kind: "expense",
+      recurringBillId: { not: null },
+      occurredAt: occurrenceRange(start, end),
+    },
+    select: { recurringBillId: true, amount: true },
+  });
+  const paidByBill = new Map<string, number>();
+  for (const entry of paidEntries) {
+    if (entry.recurringBillId) paidByBill.set(entry.recurringBillId, (paidByBill.get(entry.recurringBillId) ?? 0) + entry.amount);
+  }
+
+  const rowMap = new Map<string, BillFundingSummary["rows"][number]>();
+  for (const bill of bills) {
+    const occurrence = billOccurrencesForWindow(bill, start, end, periodType);
+    if (occurrence.count <= 0) continue;
+    const amount = Math.round(bill.amount * occurrence.count * 100) / 100;
+    const key = bill.accountId ?? "unassigned";
+    const account = overview.accounts.find((item) => item.id === bill.accountId);
+    const row = rowMap.get(key) ?? {
+      accountId: bill.accountId,
+      accountName: account?.name ?? "Account not assigned",
+      required: 0,
+      available: account?.currentBalance ?? 0,
+      shortfall: 0,
+      bills: [],
+    };
+    const paid = (paidByBill.get(bill.id) ?? 0) >= amount - 0.005 || (!!bill.paidThroughDate && bill.paidThroughDate >= end);
+    row.required = sumMoney([row.required, amount]);
+    row.bills.push({ id: bill.id, name: bill.name, amount, dueDate: occurrence.dates[0] ?? null, paid });
+    rowMap.set(key, row);
+  }
+  const rows = [...rowMap.values()].map((row) => {
+    const unpaid = sumMoney(row.bills.filter((bill) => !bill.paid).map((bill) => bill.amount));
+    return { ...row, shortfall: Math.max(0, sumMoney([unpaid, -row.available])) };
+  });
+  return {
+    rows,
+    totalRequired: sumMoney(rows.map((row) => row.required)),
+    totalShortfall: sumMoney(rows.map((row) => row.shortfall)),
+  };
+}
+
+// ── Forecasting and savings goals ──────────────────────────────────────────
+
+export async function getSavingsForecast(
+  userId: string,
+  currency: string,
+  targetDate: string,
+  overviewInput?: AccountOverview,
+): Promise<SavingsForecastDisplay> {
+  const today = todayDateStr();
+  const end = parseLocalDate(today);
+  const start = addDays(end, -14 * 8);
+  const startStr = formatDateStr(start);
+  const [overview, entries, transfers] = await Promise.all([
+    overviewInput ?? getAccountOverview(userId, currency),
+    db.moneyEntry.findMany({
+      where: { userId, currency, occurredAt: occurrenceRange(startStr, today) },
+      select: { kind: true, amount: true, occurredAt: true },
+    }),
+    db.accountTransfer.findMany({
+      where: { userId, currency, occurredAt: occurrenceRange(startStr, today) },
+      include: { fromAccount: true, toAccount: true },
+    }),
+  ]);
+  const net = Array.from({ length: 8 }, () => 0);
+  const savings = Array.from({ length: 8 }, () => 0);
+  const activity = Array.from({ length: 8 }, () => false);
+  for (const entry of entries) {
+    const local = occurrenceLocalParts(entry.occurredAt).date;
+    const index = Math.min(7, Math.max(0, Math.floor((parseLocalDate(local).getTime() - start.getTime()) / (14 * 86400000))));
+    net[index] = sumMoney([net[index], entry.kind === "income" ? entry.amount : -entry.amount]);
+    activity[index] = true;
+  }
+  for (const transfer of transfers) {
+    const qualifies = transfer.toAccount.type === "savings" && transfer.fromAccount.type !== "savings";
+    if (!qualifies) continue;
+    const local = occurrenceLocalParts(transfer.occurredAt).date;
+    const index = Math.min(7, Math.max(0, Math.floor((parseLocalDate(local).getTime() - start.getTime()) / (14 * 86400000))));
+    savings[index] = sumMoney([savings[index], Number(transfer.amount)]);
+    activity[index] = true;
+  }
+  // Exclude the current partial fortnight to avoid overstating/understating a trend.
+  const completedActivity = activity.slice(0, 7);
+  const firstActive = completedActivity.findIndex(Boolean);
+  const completedNet = firstActive < 0 ? [] : net.slice(firstActive, 7);
+  const completedSavings = firstActive < 0 ? [] : savings.slice(firstActive, 7);
+  return {
+    targetDate,
+    ...calculateSavingsForecast({
+      periodNetCashFlow: completedNet,
+      periodSavingsContributions: completedSavings,
+      currentTotalBalance: overview.totalRecordedBalance,
+      currentSavingsBalance: overview.totalSavings,
+      futureFortnights: fortnightsUntil(today, targetDate),
+    }),
+  };
+}
+
+export async function getSavingsGoals(
+  userId: string,
+  currency: string,
+  overviewInput?: AccountOverview,
+): Promise<SavingsGoalDisplay[]> {
+  const overview = overviewInput ?? await getAccountOverview(userId, currency);
+  const rows = await db.savingsGoal.findMany({
+    where: { userId, currency },
+    include: { account: true },
+    orderBy: [{ active: "desc" }, { targetDate: "asc" }],
+  });
+  const forecasts = new Map<string, SavingsForecastDisplay>();
+  for (const targetDate of new Set(rows.map((row) => row.targetDate))) {
+    forecasts.set(targetDate, await getSavingsForecast(userId, currency, targetDate, overview));
+  }
+  return rows.map((goal) => {
+    const account = overview.accounts.find((item) => item.id === goal.accountId);
+    const currentAmount = account?.currentBalance ?? overview.totalSavings;
+    const forecast = forecasts.get(goal.targetDate)!;
+    const status = calculateSavingsGoal({
+      currentAmount,
+      targetAmount: Number(goal.targetAmount),
+      targetDate: goal.targetDate,
+      today: todayDateStr(),
+      contributionPerFortnight: forecast.savingsPerFortnight,
+    });
+    return {
+      id: goal.id,
+      name: goal.name,
+      targetAmount: Number(goal.targetAmount),
+      targetDate: goal.targetDate,
+      currency: goal.currency,
+      accountId: goal.accountId,
+      accountName: goal.account?.name ?? null,
+      currentAmount,
+      ...status,
+      active: goal.active,
+    };
+  });
+}
+
+export async function createSavingsGoal(
+  userId: string,
+  input: { name: string; targetAmount: number; targetDate: string; currency: string; accountId: string | null },
+): Promise<string> {
+  if (input.accountId) {
+    const account = await db.financialAccount.findUnique({ where: { id: input.accountId } });
+    if (!account || account.userId !== userId || account.type !== "savings") throw new Error("Choose a valid savings account.");
+  }
+  const goal = await db.savingsGoal.create({
+    data: {
+      userId,
+      name: input.name.trim(),
+      targetAmount: input.targetAmount.toFixed(2),
+      targetDate: input.targetDate,
+      currency: input.currency,
+      accountId: input.accountId,
+    },
+  });
+  return goal.id;
+}
+
+export async function deleteSavingsGoal(id: string, userId: string): Promise<void> {
+  const goal = await db.savingsGoal.findUnique({ where: { id } });
+  if (!goal || goal.userId !== userId) throw new Error("Savings goal not found.");
+  await db.savingsGoal.delete({ where: { id } });
+}
+
 // ── Convenience ──────────────────────────────────────────────────────────────
 
 /** Resolves "is this user authenticated?" — mirrors HoursBoard convention */
 export async function getCurrentUser() {
+  const { requireUser } = await import("@/server/auth");
   return requireUser();
 }

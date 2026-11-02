@@ -120,7 +120,7 @@ export function Sidebar({ user }: { user: User }) {
         <Link href="/dashboard" className="flex items-center gap-2.5 group">
           <div className="w-9 h-9 rounded-[10px] overflow-hidden shadow-[0_4px_10px_rgba(62,91,77,0.18)] group-hover:scale-[1.04] transition-transform">
             <Image
-              src="/coreboard.png"
+              src="/icon.png"
               alt="Coreboard"
               width={72}
               height={72}

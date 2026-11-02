@@ -4,6 +4,10 @@ import {
   getCategories,
   getBudgetSummary,
   getRecurringBills,
+  getAccountOverview,
+  getBillFundingSummary,
+  getSavingsForecast,
+  getSavingsGoals,
 } from "@/server/queries/moneyboard";
 import {
   CURRENCIES,
@@ -11,6 +15,7 @@ import {
   projectAnchorToToday,
   todayDateStr,
 } from "@/domain/moneyboard";
+import { addDays, formatDateStr, parseLocalDate } from "@/lib/utils";
 import type { BudgetPeriodType } from "@/domain/moneyboard";
 import { BudgetOverview } from "@/components/features/moneyboard/BudgetOverview";
 import { BackButton } from "@/components/ui/BackButton";
@@ -68,9 +73,16 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
   // Load the budget first — it lazily materializes plan categories — so the
   // category list picks them up on the same render.
   const budget = await getBudgetSummary(user.id, periodType, anchor, currency.code, endOverride);
-  const [categories, bills] = await Promise.all([
+  const [categories, bills, accountOverview] = await Promise.all([
     getCategories(user.id),
     getRecurringBills(user.id, currency.code),
+    getAccountOverview(user.id, currency.code),
+  ]);
+  const defaultForecastDate = formatDateStr(addDays(parseLocalDate(todayDateStr()), 140));
+  const [billFunding, forecast, savingsGoals] = await Promise.all([
+    getBillFundingSummary(user.id, periodType, budget.startDate, budget.endDate, currency.code, accountOverview),
+    getSavingsForecast(user.id, currency.code, defaultForecastDate, accountOverview),
+    getSavingsGoals(user.id, currency.code, accountOverview),
   ]);
 
   return (
@@ -92,6 +104,10 @@ export default async function MoneyBoardPage({ searchParams }: Props) {
         categories={categories}
         currency={currency}
         bills={bills}
+        accountOverview={accountOverview}
+        billFunding={billFunding}
+        forecast={forecast}
+        savingsGoals={savingsGoals}
       />
     </div>
   );

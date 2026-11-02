@@ -49,7 +49,7 @@ function billsToDraft(bills: RecurringBillDisplay[]): DraftItem[] {
       key: "bill-" + b.id,
       name,
       amount: String(b.amount),
-      recur: b.cadence === "week" ? "Weekly" : b.cadence === "month" ? "Monthly" : "Fortnightly",
+      recur: b.cadence === "week" ? "Weekly" : b.cadence === "month" ? "Monthly" : b.cadence === "year" ? "Yearly" : "Fortnightly",
     };
   });
 }
@@ -89,6 +89,10 @@ function selectAutoBills(
   const picked = new Map<string, RecurringBillDisplay>();
   for (const b of bills) {
     if (!b.active) continue;
+    if (b.nextPaymentDate && b.nextPaymentDate >= start && b.nextPaymentDate <= end) {
+      picked.set(b.id, b);
+      continue;
+    }
     if (b.cadence === periodType) {
       picked.set(b.id, b);
       continue;
@@ -173,11 +177,11 @@ export function PlanBudgetSheet({ open, onClose, budget, currency, bills }: Prop
       role="dialog"
       aria-modal="true"
       aria-label="Plan budget"
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/45 p-4 md:p-6 overflow-y-auto"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-ink/45 p-0 pt-[env(safe-area-inset-top)] sm:p-4 md:p-6 overflow-hidden"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg max-h-[calc(100vh-2rem)] md:max-h-[90vh] overflow-y-auto bg-paper rounded-[22px] shadow-lg p-5 md:p-6 my-auto"
+        className="w-full max-w-lg max-h-full sm:max-h-[calc(100dvh-2rem)] md:max-h-[90vh] overflow-y-auto overscroll-contain bg-paper rounded-t-[22px] sm:rounded-[22px] shadow-lg p-4 sm:p-5 md:p-6 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-5 md:pb-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-4">
@@ -189,7 +193,7 @@ export function PlanBudgetSheet({ open, onClose, budget, currency, bills }: Prop
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="w-8 h-8 rounded-full bg-white border border-border-soft flex items-center justify-center text-muted hover:text-ink"
+            className="w-10 h-10 shrink-0 rounded-full bg-white border border-border-soft flex items-center justify-center text-muted hover:text-ink"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
               <path d="M1 1L11 11M11 1L1 11" />
@@ -251,7 +255,7 @@ export function PlanBudgetSheet({ open, onClose, budget, currency, bills }: Prop
             {items.map((it) => (
               <div
                 key={it.key}
-                className="flex items-center gap-2 bg-white border border-border-soft rounded-[12px] px-3 py-2"
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 bg-white border border-border-soft rounded-[12px] px-3 py-2 min-[390px]:flex min-[390px]:items-center"
               >
                 <input
                   type="text"
@@ -261,29 +265,31 @@ export function PlanBudgetSheet({ open, onClose, budget, currency, bills }: Prop
                   }
                   placeholder="Item"
                   aria-label="Item name"
-                  className="flex-1 min-w-0 bg-transparent text-[14px] font-medium text-ink outline-none placeholder:text-pale"
+                  className="col-span-2 min-w-0 bg-transparent text-[14px] font-medium text-ink outline-none placeholder:text-pale min-[390px]:col-span-1"
                 />
-                <span className="text-[13px] text-muted">{currency.symbol}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={it.amount}
-                  onChange={(e) =>
-                    setItems((prev) =>
-                      prev.map((x) =>
-                        x.key === it.key ? { ...x, amount: sanitizeAmountInput(e.target.value, currency) } : x,
-                      ),
-                    )
-                  }
-                  placeholder="0"
-                  aria-label="Item amount"
-                  className="w-16 bg-transparent text-[14px] font-mono font-semibold text-ink outline-none text-right"
-                />
+                <span className="col-start-1 flex items-center justify-start gap-1 min-[390px]:col-auto min-[390px]:justify-end">
+                  <span className="text-[13px] text-muted">{currency.symbol}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={it.amount}
+                    onChange={(e) =>
+                      setItems((prev) =>
+                        prev.map((x) =>
+                          x.key === it.key ? { ...x, amount: sanitizeAmountInput(e.target.value, currency) } : x,
+                        ),
+                      )
+                    }
+                    placeholder="0"
+                    aria-label="Item amount"
+                    className="w-20 bg-transparent text-[14px] font-mono font-semibold text-ink outline-none text-right"
+                  />
+                </span>
                 <button
                   type="button"
                   onClick={() => setItems((prev) => prev.filter((x) => x.key !== it.key))}
                   aria-label={`Remove ${it.name || "item"}`}
-                  className="w-6 h-6 rounded-full text-pale hover:text-ink text-[16px] leading-none"
+                  className="col-start-2 justify-self-end w-10 h-10 min-[390px]:w-8 min-[390px]:h-8 rounded-full text-pale hover:text-ink text-[18px] leading-none"
                 >
                   ×
                 </button>

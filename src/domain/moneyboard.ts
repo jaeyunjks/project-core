@@ -2,6 +2,98 @@
 
 import { parseLocalDate, addDays, formatDateStr } from "@/lib/utils";
 
+export const MONEYBOARD_TIME_ZONE = "Australia/Sydney";
+
+/** Round monetary arithmetic through cents to avoid binary floating drift. */
+export function toCents(amount: number): number {
+  return Math.round((Number(amount) || 0) * 100);
+}
+
+export function fromCents(cents: number): number {
+  return Math.round(Number(cents) || 0) / 100;
+}
+
+export function sumMoney(values: number[]): number {
+  return fromCents(values.reduce((sum, value) => sum + toCents(value), 0));
+}
+
+function zonedParts(date: Date, timeZone = MONEYBOARD_TIME_ZONE): Record<string, string> {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat("en-AU", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+}
+
+/** Convert a Sydney wall-clock date/time into an absolute instant, including DST. */
+export function localDateTimeToUtc(
+  dateStr: string,
+  timeStr: string,
+  timeZone = MONEYBOARD_TIME_ZONE,
+): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !/^\d{2}:\d{2}$/.test(timeStr)) {
+    throw new Error("Date and time are invalid.");
+  }
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const [hour, minute] = timeStr.split(":").map(Number);
+  const probe = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day ||
+    hour > 23 ||
+    minute > 59
+  ) {
+    throw new Error("Date and time are invalid.");
+  }
+
+  const wanted = Date.UTC(year, month - 1, day, hour, minute);
+  let instant = wanted;
+  for (let i = 0; i < 4; i += 1) {
+    const p = zonedParts(new Date(instant), timeZone);
+    const represented = Date.UTC(
+      Number(p.year),
+      Number(p.month) - 1,
+      Number(p.day),
+      Number(p.hour),
+      Number(p.minute),
+    );
+    const delta = wanted - represented;
+    if (delta === 0) break;
+    instant += delta;
+  }
+  const result = new Date(instant);
+  const final = occurrenceLocalParts(result, timeZone);
+  if (final.date !== dateStr || final.time !== timeStr) {
+    throw new Error("That local time does not exist in Australia/Sydney because of daylight saving.");
+  }
+  return result;
+}
+
+export function occurrenceLocalParts(
+  value: Date | string,
+  timeZone = MONEYBOARD_TIME_ZONE,
+): { date: string; time: string } {
+  const p = zonedParts(typeof value === "string" ? new Date(value) : value, timeZone);
+  return {
+    date: `${p.year}-${p.month}-${p.day}`,
+    time: `${p.hour}:${p.minute}`,
+  };
+}
+
+export function currentSydneyDateTime(): { date: string; time: string } {
+  return occurrenceLocalParts(new Date());
+}
+
 // ── Icon keys (mirrored by CategoryIcon component) ───────────────────────────
 
 export type CategoryIconKey =
@@ -369,8 +461,214 @@ export function periodDayCounts(win: PeriodWindow): {
 
 /** Today as YYYY-MM-DD */
 export function todayDateStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return currentSydneyDateTime().date;
+}
+
+// ── Accounts, forecasting, and savings goals ───────────────────────────────
+
+export type AccountType = "everyday" | "bills" | "savings" | "other";
+
+export function calculateRecordedBalance(input: {
+  openingBalance: number;
+  income: number[];
+  expenses: number[];
+  transfersIn: number[];
+  transfersOut: number[];
+}): number {
+  const cents =
+    toCents(input.openingBalance) +
+    input.income.reduce((sum, n) => sum + toCents(n), 0) -
+    input.expenses.reduce((sum, n) => sum + toCents(n), 0) +
+    input.transfersIn.reduce((sum, n) => sum + toCents(n), 0) -
+    input.transfersOut.reduce((sum, n) => sum + toCents(n), 0);
+  return fromCents(cents);
+}
+
+export function calculateBudgetPosition(budgetedValue: number, spentValue: number): {
+  budgeted: number;
+  spent: number;
+  remaining: number;
+  overBudget: boolean;
+  overspentAmount: number;
+  percentUsed: number;
+} {
+  const budgeted = fromCents(toCents(budgetedValue));
+  const spent = fromCents(toCents(spentValue));
+  const remaining = fromCents(toCents(budgeted) - toCents(spent));
+  return {
+    budgeted,
+    spent,
+    remaining,
+    overBudget: spent > budgeted,
+    overspentAmount: Math.max(0, -remaining),
+    percentUsed: budgeted > 0 ? Math.round((spent / budgeted) * 1000) / 10 : spent > 0 ? 100 : 0,
+  };
+}
+
+/**
+ * Combine real bill expenses with planning-only coverage without counting the
+ * same commitment twice. Planning coverage never represents a MoneyEntry.
+ */
+export function calculateRecurringBillCoverage(input: {
+  committedAmount: number;
+  actualPaidAmount: number;
+  automaticallyCovered: boolean;
+}): { actualPaid: number; planningCoverage: number; coveredAmount: number; covered: boolean } {
+  const committed = Math.max(0, fromCents(toCents(input.committedAmount)));
+  const actualPaid = Math.max(0, fromCents(toCents(input.actualPaidAmount)));
+  const planningCoverage = input.automaticallyCovered
+    ? Math.max(0, fromCents(toCents(committed) - toCents(actualPaid)))
+    : 0;
+  const coveredAmount = sumMoney([actualPaid, planningCoverage]);
+  return {
+    actualPaid,
+    planningCoverage,
+    coveredAmount,
+    covered: committed > 0 && coveredAmount >= committed,
+  };
+}
+
+export function calculateFlexibleBalance(input: {
+  plannedSpendable: number;
+  unplannedSpent: number;
+  categoryPositions: Array<{ budgeted: number; spent: number }>;
+}): { leftToSpend: number; categoryOverspend: number } {
+  const categoryOverspend = sumMoney(
+    input.categoryPositions.map((position) => Math.max(0, position.spent - position.budgeted)),
+  );
+  return {
+    categoryOverspend,
+    leftToSpend: sumMoney([input.plannedSpendable, -input.unplannedSpent, -categoryOverspend]),
+  };
+}
+
+export function occurrenceFallsInWindow(
+  occurredAt: Date | string,
+  startDate: string,
+  endDate: string,
+): boolean {
+  const localDate = occurrenceLocalParts(occurredAt).date;
+  return localDate >= startDate && localDate <= endDate;
+}
+
+export function calculateBillAccountRequirements(input: {
+  accounts: Array<{ id: string; available: number }>;
+  bills: Array<{ accountId: string | null; amount: number; paid?: boolean }>;
+}): Array<{ accountId: string | null; required: number; shortfall: number }> {
+  const grouped = new Map<string, { accountId: string | null; required: number; unpaid: number }>();
+  for (const bill of input.bills) {
+    const key = bill.accountId ?? "unassigned";
+    const row = grouped.get(key) ?? { accountId: bill.accountId, required: 0, unpaid: 0 };
+    row.required = sumMoney([row.required, bill.amount]);
+    if (!bill.paid) row.unpaid = sumMoney([row.unpaid, bill.amount]);
+    grouped.set(key, row);
+  }
+  return [...grouped.values()].map((row) => {
+    const available = input.accounts.find((account) => account.id === row.accountId)?.available ?? 0;
+    return { accountId: row.accountId, required: row.required, shortfall: Math.max(0, sumMoney([row.unpaid, -available])) };
+  });
+}
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = (sorted.length - 1) * p;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  if (lower === upper) return sorted[lower];
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+}
+
+export interface ForecastProjection {
+  periodsOfHistory: number;
+  futureFortnights: number;
+  confidence: "insufficient" | "limited" | "representative";
+  currentTotalBalance: number;
+  currentSavingsBalance: number;
+  netPerFortnight: { conservative: number; baseline: number; optimistic: number };
+  savingsPerFortnight: number;
+  projectedTotal: { conservative: number; baseline: number; optimistic: number };
+  projectedSavings: number;
+}
+
+export function fortnightsUntil(fromDate: string, targetDate: string): number {
+  const start = parseLocalDate(fromDate).getTime();
+  const target = parseLocalDate(targetDate).getTime();
+  return Math.max(0, Math.ceil((target - start) / (14 * 86400000)));
+}
+
+export function calculateSavingsForecast(input: {
+  periodNetCashFlow: number[];
+  periodSavingsContributions: number[];
+  currentTotalBalance: number;
+  currentSavingsBalance: number;
+  futureFortnights: number;
+}): ForecastProjection {
+  const net = input.periodNetCashFlow.map((value) => fromCents(toCents(value))).slice(-8);
+  const savings = input.periodSavingsContributions.map((value) => fromCents(toCents(value))).slice(-8);
+  const baseline = percentile(net, 0.5);
+  const conservative = percentile(net, 0.25);
+  const optimistic = percentile(net, 0.75);
+  const savingsPerFortnight = percentile(savings, 0.5);
+  const future = Math.max(0, Math.floor(input.futureFortnights));
+  const project = (current: number, rate: number) => fromCents(toCents(current) + toCents(rate) * future);
+
+  return {
+    periodsOfHistory: net.length,
+    futureFortnights: future,
+    confidence: net.length < 3 ? "insufficient" : net.length < 6 ? "limited" : "representative",
+    currentTotalBalance: fromCents(toCents(input.currentTotalBalance)),
+    currentSavingsBalance: fromCents(toCents(input.currentSavingsBalance)),
+    netPerFortnight: {
+      conservative: fromCents(toCents(conservative)),
+      baseline: fromCents(toCents(baseline)),
+      optimistic: fromCents(toCents(optimistic)),
+    },
+    savingsPerFortnight: fromCents(toCents(savingsPerFortnight)),
+    projectedTotal: {
+      conservative: project(input.currentTotalBalance, conservative),
+      baseline: project(input.currentTotalBalance, baseline),
+      optimistic: project(input.currentTotalBalance, optimistic),
+    },
+    projectedSavings: project(input.currentSavingsBalance, savingsPerFortnight),
+  };
+}
+
+export function calculateSavingsGoal(input: {
+  currentAmount: number;
+  targetAmount: number;
+  targetDate: string;
+  today: string;
+  contributionPerFortnight: number;
+}): {
+  remaining: number;
+  progressPercent: number;
+  requiredPerFortnight: number;
+  forecastAtDeadline: number;
+  onTrack: boolean;
+  estimatedCompletionDate: string | null;
+} {
+  const current = toCents(input.currentAmount);
+  const target = toCents(input.targetAmount);
+  const remaining = Math.max(0, target - current);
+  const periods = fortnightsUntil(input.today, input.targetDate);
+  const contribution = toCents(input.contributionPerFortnight);
+  const forecast = current + contribution * periods;
+  let estimatedCompletionDate: string | null = null;
+  if (remaining === 0) estimatedCompletionDate = input.today;
+  else if (contribution > 0) {
+    estimatedCompletionDate = formatDateStr(
+      addDays(parseLocalDate(input.today), Math.ceil(remaining / contribution) * 14),
+    );
+  }
+  return {
+    remaining: fromCents(remaining),
+    progressPercent: target > 0 ? Math.max(0, Math.min(100, Math.round((current / target) * 1000) / 10)) : 0,
+    requiredPerFortnight: periods > 0 ? fromCents(Math.ceil(remaining / periods)) : fromCents(remaining),
+    forecastAtDeadline: fromCents(forecast),
+    onTrack: forecast >= target,
+    estimatedCompletionDate,
+  };
 }
 
 // ── Currency ────────────────────────────────────────────────────────────────

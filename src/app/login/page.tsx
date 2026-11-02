@@ -11,7 +11,7 @@ export default function LoginPage() {
         <div className="flex items-center gap-2.5 mb-8">
           <div className="w-11 h-11 rounded-[13px] overflow-hidden shadow-[0_6px_16px_rgba(62,91,77,0.22)]">
             <Image
-              src="/coreboard.png"
+              src="/icon.png"
               alt="Coreboard"
               width={88}
               height={88}

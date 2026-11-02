@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import type { BudgetPeriodDisplay, MoneyCategoryDisplay, RecurringBillDisplay } from "@/types";
+import type { AccountOverview, BillFundingSummary, BudgetPeriodDisplay, MoneyCategoryDisplay, MoneyEntryDisplay, RecurringBillDisplay, SavingsForecastDisplay, SavingsGoalDisplay } from "@/types";
 import type { BudgetPeriodType, CurrencyOption } from "@/domain/moneyboard";
 import { cn, parseLocalDate } from "@/lib/utils";
 import { formatMoney, shiftPeriodAnchor, derivePeriodEnd } from "@/domain/moneyboard";
@@ -24,6 +24,8 @@ import { EntryModal } from "./EntryModal";
 import { CategoryIcon } from "./CategoryIcon";
 import { PlanBudgetSheet } from "./PlanBudgetSheet";
 import { BillPlanningModal } from "./BillPlanningModal";
+import { AccountManagementModal } from "./AccountManagementModal";
+import { FinancialInsightsModal } from "./FinancialInsightsModal";
 import { deleteMoneyEntryAction } from "@/server/actions/moneyboard";
 
 interface Props {
@@ -31,6 +33,10 @@ interface Props {
   categories: MoneyCategoryDisplay[];
   currency: CurrencyOption;
   bills: RecurringBillDisplay[];
+  accountOverview: AccountOverview;
+  billFunding: BillFundingSummary;
+  forecast: SavingsForecastDisplay;
+  savingsGoals: SavingsGoalDisplay[];
 }
 
 // URL param holding the start anchor for each cadence — kept separate so one
@@ -41,13 +47,16 @@ const ANCHOR_KEY: Record<BudgetPeriodType, string> = {
   month: "mo",
 };
 
-export function BudgetOverview({ budget, categories, currency, bills }: Props) {
+export function BudgetOverview({ budget, categories, currency, bills, accountOverview, billFunding, forecast, savingsGoals }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [planOpen, setPlanOpen] = useState(false);
   const [spendOpen, setSpendOpen] = useState(false);
   const [billsOpen, setBillsOpen] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<MoneyEntryDisplay | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, startDelete] = useTransition();
   // Drives the loading overlay while a period / date / currency change round-trips
@@ -55,6 +64,7 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
   const [isNavPending, startNav] = useTransition();
 
   const deleteEntry = (id: string) => {
+    if (!window.confirm("Delete this transaction? This cannot be undone.")) return;
     setDeletingId(id);
     const fd = new FormData();
     fd.set("id", id);
@@ -184,15 +194,15 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
         </div>
 
         {/* Row 2 — date range */}
-        <div className="flex items-end gap-2 mb-4">
-          <DateField label="Start" value={budget.startDate} onChange={setStartDate} className="w-[150px]" />
-          <span className="h-9 flex items-center text-muted text-[13px] shrink-0">→</span>
+        <div className="grid grid-cols-1 min-[375px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2 mb-4 min-w-0 sm:flex sm:gap-2">
+          <DateField label="Start" value={budget.startDate} onChange={setStartDate} className="min-w-0 sm:w-[150px]" />
+          <span className="hidden min-[375px]:flex h-9 items-center text-muted text-[13px] shrink-0">→</span>
           <DateField
             label="End"
             value={budget.endDate}
             min={budget.startDate}
             onChange={setEndDate}
-            className="w-[150px]"
+            className="min-w-0 sm:w-[150px]"
           />
         </div>
         {isCustomEnd && (
@@ -237,7 +247,7 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
           </div>
           <div
             className={cn(
-              "font-mono font-semibold tracking-tight leading-none text-[46px] md:text-[56px] mt-1.5",
+              "font-mono font-semibold tracking-tight leading-none text-[clamp(2.25rem,12vw,2.875rem)] md:text-[56px] mt-1.5 break-words",
               positive ? "text-sage" : "text-[#8A3F2E]",
             )}
           >
@@ -270,11 +280,11 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
                 aria-controls="committed-items-list"
                 className="w-full flex items-center justify-between px-3.5 py-2.5 text-left"
               >
-                <span className="text-[10px] font-semibold font-mono uppercase tracking-[0.16em] text-faint">
-                  Committed items · {budget.committedItems.length}
+                <span className="min-w-0 text-[10px] font-semibold font-mono uppercase tracking-[0.12em] text-faint">
+                  Committed · {budget.committedItems.length}
                 </span>
-                <span className="flex items-center gap-2">
-                  <span className="text-[12px] font-mono font-semibold text-ink tabular-nums">
+                <span className="flex items-center gap-2 shrink-0 pl-2">
+                  <span className="text-[12px] font-mono font-semibold text-ink tabular-nums whitespace-nowrap">
                     {formatMoney(budget.committedTotal, { currency })}
                   </span>
                   <svg
@@ -364,11 +374,31 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
 
         {/* Action row */}
         <div className="flex items-end justify-between mt-6 px-1">
-          <ActionBtn label="Cash flow" icon={<CashIcon />} onClick={() => { /* future */ }} />
+          <ActionBtn label="Accounts" icon={<CashIcon />} onClick={() => setAccountsOpen(true)} />
           <ActionBtn label="Bill planning" icon={<BillIcon />} onClick={() => setBillsOpen(true)} />
-          <ActionBtn label="Add spend" icon={<PlusIcon size={22} />} primary onClick={() => setSpendOpen(true)} />
-          <ActionBtn label="Insights" icon={<BarsIcon />} onClick={() => { /* future */ }} />
+          <ActionBtn label="Add entry" icon={<PlusIcon size={22} />} primary onClick={() => setSpendOpen(true)} />
+          <ActionBtn label="Insights" icon={<BarsIcon />} onClick={() => setInsightsOpen(true)} />
         </div>
+
+        {/* Consolidated financial overview */}
+        <div className="mt-8">
+          <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-faint mb-3">Financial overview</div>
+          <div className="bg-white border border-border-soft rounded-[16px] shadow-card p-4 grid grid-cols-2 gap-x-4 gap-y-3">
+            <OverviewMetric label="All accounts" value={formatMoney(accountOverview.totalRecordedBalance, { currency })} />
+            <OverviewMetric label="Total savings" value={formatMoney(accountOverview.totalSavings, { currency })} />
+            <OverviewMetric label="Planned savings" value={formatMoney(budget.protectValue, { currency })} />
+            <OverviewMetric label="Actual savings" value={formatMoney(accountOverview.actualSavingsContributions, { currency })} />
+            <OverviewMetric label="Bills allocated" value={formatMoney(billFunding.totalRequired, { currency })} />
+            <OverviewMetric label="Spendable remaining" value={formatMoney(budget.leftToSpend, { signed: budget.leftToSpend < 0, currency })} danger={budget.leftToSpend < 0} />
+          </div>
+        </div>
+
+        {budget.overallOverBudget && (
+          <div className="mt-4 px-4 py-3 rounded-[13px] bg-[#F1DDD5] border border-[#E4C8BD]">
+            <div className="text-[13px] font-semibold text-[#8A3F2E]">Budget exceeded by {formatMoney(Math.max(budget.overspentAmount, Math.abs(Math.min(0, budget.leftToSpend))), { currency })}</div>
+            <p className="text-[12px] text-[#7A4938] mt-1">Transactions are still allowed. Overspending remains visible and is included in the forecast.</p>
+          </div>
+        )}
 
         {/* Category budgets — drawdown bar chart */}
         {budget.categoryBudgets.length > 0 && (
@@ -376,105 +406,115 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
             <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-faint mb-3">
               Category budgets
             </div>
-            <div className="bg-white border border-border-soft rounded-[16px] shadow-card p-4 md:p-5 flex flex-col gap-4">
-              {budget.categoryBudgets.map((b) => (
-                <div key={b.key}>
-                  <div className="flex items-baseline justify-between mb-1.5">
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-[13.5px] font-medium text-ink">{b.name}</span>
-                      {b.paid && (
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-sage bg-sage/10 px-1.5 py-0.5 rounded-full">
-                          Paid
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-[12.5px] font-mono text-muted tabular-nums">
-                      {formatMoney(b.spent, { currency })} / {formatMoney(b.budgeted, { currency })}
-                    </span>
-                  </div>
-                  <div className="h-2.5 rounded-full bg-paper overflow-hidden">
+            <div className="bg-white border border-border-soft rounded-[16px] shadow-card px-4 md:px-5">
+              {budget.categoryBudgets.map((b, index) => {
+                const progressLabel = b.overBudget
+                  ? `Over budget by ${formatMoney(Math.abs(b.remaining), { currency })}`
+                  : b.paid
+                    ? "100% covered"
+                    : b.remaining === 0
+                      ? "100% used"
+                      : `${formatMoney(b.remaining, { currency })} left · ${b.percentUsed}% used`;
+                return (
+                  <div
+                    key={b.key}
+                    className={cn(
+                      "py-4 md:py-4.5",
+                      index < budget.categoryBudgets.length - 1 && "border-b border-border-soft",
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                        <div className="min-w-0 flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+                          <span className="text-[14px] font-semibold leading-snug text-ink break-words [overflow-wrap:anywhere]">{b.name}</span>
+                          {b.paid && (
+                            <span className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-sage bg-sage-tint border border-sage-border px-2 py-0.5 rounded-full">
+                              Covered in plan
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[12.5px] font-mono text-muted tabular-nums break-words [overflow-wrap:anywhere] sm:text-right">
+                          {formatMoney(b.spent, { currency })} covered / {formatMoney(b.budgeted, { currency })} budget
+                        </div>
+                      </div>
+                    </div>
                     <div
-                      className="h-full rounded-full transition-[width] duration-300"
-                      style={{
-                        width: `${b.percentUsed}%`,
-                        background: b.overBudget ? "#8A3F2E" : b.color,
-                      }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span
-                      className={cn(
-                        "text-[12px] font-mono font-semibold tabular-nums",
-                        b.overBudget ? "text-[#8A3F2E]" : b.paid ? "text-faint" : "text-sage",
-                      )}
+                      role="progressbar"
+                      aria-label={`${b.name} budget progress`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={b.percentUsed}
+                      aria-valuetext={progressLabel}
+                      className="h-2.5 rounded-full bg-paper overflow-hidden mt-3"
                     >
-                      {b.overBudget
-                        ? `${formatMoney(Math.abs(b.remaining), { currency })} over`
-                        : b.paid
-                          ? "Fully paid"
-                          : `${formatMoney(b.remaining, { currency })} left`}
-                    </span>
-                    <span className="text-[11px] font-mono text-faint">{b.percentUsed}% used</span>
+                      <div
+                        className="h-full rounded-full transition-[width] duration-300"
+                        style={{
+                          width: `${b.percentUsed}%`,
+                          background: b.overBudget ? "#8A3F2E" : b.color,
+                        }}
+                      />
+                    </div>
+                    <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                      <span className="text-[11.5px] font-mono text-muted tabular-nums break-words [overflow-wrap:anywhere]">
+                        {formatMoney(b.actualSpent, { currency })} actual
+                        {b.planningCoverage > 0 && <> · {formatMoney(b.planningCoverage, { currency })} planned</>}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[11.5px] font-mono font-semibold tabular-nums",
+                          b.overBudget ? "text-[#8A3F2E]" : b.paid ? "text-sage" : "text-muted",
+                        )}
+                      >
+                        {progressLabel}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
 
         {/* Recent entries */}
         <div className="mt-8">
-          <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-faint mb-3">
-            Recent entries
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-faint">Recent entries</div>
+            <Link href={`/dashboard/moneyboard/transactions?start=${budget.startDate}&end=${budget.endDate}&currency=${currency.code}&view=${budget.periodType}`} className="text-[12px] font-semibold text-sage hover:text-sage-deep">View all {budget.transactionCount > 0 ? `(${budget.transactionCount})` : ""}</Link>
           </div>
           {budget.recentEntries.length === 0 ? (
             <div className="bg-white border border-dashed border-border rounded-[14px] p-8 text-center">
-              <p className="text-[14px] font-medium text-ink">No spends logged yet</p>
+              <p className="text-[14px] font-medium text-ink">No entries logged yet</p>
               <p className="text-[12.5px] text-muted mt-1.5">
-                Tap <span className="font-semibold">Add spend</span> to record your first transaction.
+                Tap <span className="font-semibold">Add entry</span> to record your first transaction.
               </p>
             </div>
           ) : (
             <div className="bg-white border border-border-soft rounded-[16px] shadow-card overflow-hidden">
               {budget.recentEntries.map((e, i) => (
-                <div
-                  key={e.id}
-                  className={cn(
-                    "flex items-center justify-between px-4 py-3.5",
-                    i < budget.recentEntries.length - 1 && "border-b border-border-soft",
-                  )}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
+                <div key={e.id} className={cn("flex items-start gap-3 px-4 py-4", i < budget.recentEntries.length - 1 && "border-b border-border-soft")}>
+                  <div className="flex flex-1 items-start gap-3 min-w-0">
                     <div
                       className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
                       style={{ background: "#EFE9DC" }}
                     >
                       <CategoryIcon icon={e.category.icon} size={16} color={e.category.color} />
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-[14.5px] font-medium text-ink truncate">
-                        {e.note?.trim() || e.category.label}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-col gap-1 min-[390px]:flex-row min-[390px]:items-start min-[390px]:justify-between min-[390px]:gap-3">
+                        <div className="text-[14.5px] font-medium leading-snug text-ink break-words [overflow-wrap:anywhere]">{e.note?.trim() || e.category.label}</div>
+                        <span className={cn("shrink-0 text-[14.5px] font-mono font-semibold tabular-nums", e.kind === "income" ? "text-sage" : "text-ink")}>
+                          {e.kind === "income" ? "+" : "−"}{formatMoney(e.amount, { currency })}
+                        </span>
                       </div>
-                      <div className="text-[11.5px] text-muted mt-0.5 font-mono">
-                        {e.category.label} · {e.date.slice(5)}
+                      <div className="text-[11.5px] text-muted mt-1 font-mono leading-relaxed break-words [overflow-wrap:anywhere]">
+                        {e.category.label} · {e.account?.name ?? "Unassigned"} · {e.date.slice(5)} · {e.occurrenceTimeKnown ? e.time : "Time not recorded"}
+                      </div>
+                      <div className="flex items-center gap-2 mt-2.5">
+                        <button type="button" onClick={() => setEditingEntry(e)} className="h-10 px-3 rounded-[10px] bg-paper text-[12px] font-semibold text-ink hover:text-sage" aria-label={`Edit ${e.note?.trim() || e.category.label}`}>Edit</button>
+                        <button type="button" onClick={() => deleteEntry(e.id)} disabled={deletingId === e.id} className="h-10 px-3 rounded-[10px] text-[12px] font-semibold text-[#8A3F2E] hover:bg-[#8A3F2E]/8 disabled:opacity-40" aria-label={`Delete ${e.note?.trim() || e.category.label}`}>Delete</button>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[14.5px] font-mono font-semibold text-ink tabular-nums">
-                      −{formatMoney(e.amount, { currency })}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => deleteEntry(e.id)}
-                      disabled={deletingId === e.id}
-                      aria-label={`Delete ${e.note?.trim() || e.category.label}`}
-                      className="w-7 h-7 rounded-full text-pale hover:text-[#8A3F2E] hover:bg-[#8A3F2E]/8 flex items-center justify-center transition-colors disabled:opacity-40"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 5h14M8 5V3h4v2M6 5l1 12h6l1-12" />
-                      </svg>
-                    </button>
                   </div>
                 </div>
               ))}
@@ -487,6 +527,7 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
       <aside className="hidden md:block md:col-span-2">
         <div className="md:sticky md:top-6 flex flex-col gap-4">
           <PlanSnapshotCard budget={budget} currency={currency} protectHidden={protectHidden} />
+          <AccountSnapshotCard overview={accountOverview} currency={currency} onOpen={() => setAccountsOpen(true)} />
         </div>
       </aside>
 
@@ -503,6 +544,8 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
         onClose={() => setBillsOpen(false)}
         bills={bills}
         currency={currency}
+        accounts={accountOverview.accounts}
+        categories={categories}
       />
       <EntryModal
         open={spendOpen}
@@ -515,9 +558,36 @@ export function BudgetOverview({ budget, categories, currency, bills }: Props) {
         )}
         leftToSpend={budget.leftToSpend}
         planCategoryIds={budget.categoryBudgets.map((b) => b.categoryId)}
+        accounts={accountOverview.accounts}
+        bills={bills}
       />
+      <EntryModal
+        open={!!editingEntry}
+        onClose={() => setEditingEntry(null)}
+        categories={categories}
+        editEntry={editingEntry}
+        defaultCurrency={currency}
+        accounts={accountOverview.accounts}
+        bills={bills}
+      />
+      <AccountManagementModal open={accountsOpen} onClose={() => setAccountsOpen(false)} overview={accountOverview} currency={currency} />
+      <FinancialInsightsModal open={insightsOpen} onClose={() => setInsightsOpen(false)} forecast={forecast} goals={savingsGoals} accounts={accountOverview.accounts} currency={currency} />
       </div>
     </>
+  );
+}
+
+function OverviewMetric({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
+  return <div className="min-w-0"><div className="text-[9px] font-mono uppercase tracking-[0.1em] text-faint break-words">{label}</div><div className={cn("text-[13px] sm:text-[14px] font-mono font-semibold mt-1 break-words", danger ? "text-[#8A3F2E]" : "text-ink")}>{value}</div></div>;
+}
+
+function AccountSnapshotCard({ overview, currency, onOpen }: { overview: AccountOverview; currency: CurrencyOption; onOpen: () => void }) {
+  return (
+    <div className="bg-white border border-border-soft rounded-[16px] p-5 shadow-card">
+      <div className="flex items-center justify-between mb-3"><div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-faint">Accounts</div><button type="button" onClick={onOpen} className="text-[12px] font-semibold text-sage">Manage</button></div>
+      {overview.accounts.map((account) => <div key={account.id} className="flex items-center justify-between py-2 border-b border-border-soft last:border-0"><div><div className="text-[13px] font-medium text-ink">{account.name}</div><div className="text-[10.5px] text-muted capitalize">{account.type}</div></div><div className="text-[13px] font-mono font-semibold text-ink">{formatMoney(account.currentBalance, { currency })}</div></div>)}
+      <div className="flex items-center justify-between pt-3 mt-1"><span className="text-[12px] font-semibold text-ink">Total</span><span className="text-[15px] font-mono font-semibold text-sage">{formatMoney(overview.totalRecordedBalance, { currency })}</span></div>
+    </div>
   );
 }
 
@@ -635,7 +705,7 @@ function DateField({
         value={value}
         min={min}
         onChange={(e) => onChange(e.target.value)}
-        className="h-9 w-full px-2.5 rounded-[10px] bg-white border border-border-soft shadow-sm text-[13px] font-medium text-ink font-mono outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all"
+        className="h-9 w-full min-w-0 max-w-full px-2 sm:px-2.5 rounded-[10px] bg-white border border-border-soft shadow-sm text-[13px] font-medium text-ink font-mono outline-none focus:border-sage focus:ring-[3px] focus:ring-sage/10 transition-all"
       />
     </label>
   );

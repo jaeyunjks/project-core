@@ -61,11 +61,11 @@ export function AppShell({ children, user }: AppShellProps) {
       <Sidebar user={user} />
 
       {/* Page content */}
-      <main className="flex-1 min-w-0 pb-20 md:pb-0">{children}</main>
+      <main className="flex-1 min-w-0 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0">{children}</main>
 
       {/* Mobile bottom nav — solid bg. backdrop-blur on a fixed element lags and
           visibly detaches during momentum scrolling on mobile, so avoid it. */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 h-16 border-t border-border-soft bg-white flex items-center justify-around px-3 z-50">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 h-[calc(4rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] border-t border-border-soft bg-white flex items-center justify-around px-2 z-50">
         {mobileNav.map((item) => {
           const active = isActive(item.href);
           return (
@@ -73,7 +73,7 @@ export function AppShell({ children, user }: AppShellProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center gap-0.5 transition-colors",
+                "min-w-11 min-h-11 flex flex-col items-center justify-center gap-0.5 transition-colors",
                 active ? "text-sage" : "text-pale"
               )}
             >
@@ -88,7 +88,7 @@ export function AppShell({ children, user }: AppShellProps) {
           <button
             type="submit"
             aria-label="Sign out"
-            className="flex flex-col items-center gap-0.5 text-pale hover:text-sage transition-colors"
+            className="min-w-11 min-h-11 flex flex-col items-center justify-center gap-0.5 text-pale hover:text-sage transition-colors"
           >
             <LogoutIcon />
             <span className="text-[10px] font-medium">Sign out</span>

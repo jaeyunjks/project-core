@@ -100,10 +100,57 @@ export interface MoneyEntryDisplay {
   amount: number;            // positive
   currency: string;          // ISO 4217 code, e.g. "AUD", "IDR"
   date: string;              // YYYY-MM-DD
+  time: string;              // HH:mm in Australia/Sydney
+  occurrenceTimeKnown: boolean; // false when only the legacy calendar date is known
+  occurredAt: string;        // absolute ISO timestamp used for reporting
+  createdAt: string;
+  updatedAt: string;
   note: string | null;
   source: "manual" | "hoursboard";
   payPeriodId: string | null;
+  recurringBillId: string | null;
+  account: FinancialAccountRef | null;
   category: MoneyCategoryDisplay;
+}
+
+export interface FinancialAccountRef {
+  id: string;
+  name: string;
+  type: "everyday" | "bills" | "savings" | "other";
+  currency: string;
+}
+
+export interface FinancialAccountDisplay extends FinancialAccountRef {
+  openingBalance: number;
+  currentBalance: number;
+  color: string | null;
+  sortOrder: number;
+  archived: boolean;
+  transactionCount: number;
+}
+
+export interface AccountTransferDisplay {
+  id: string;
+  fromAccountId: string;
+  fromAccountName: string;
+  toAccountId: string;
+  toAccountName: string;
+  amount: number;
+  currency: string;
+  occurredAt: string;
+  date: string;
+  time: string;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface AccountOverview {
+  accounts: FinancialAccountDisplay[];
+  recentTransfers: AccountTransferDisplay[];
+  totalRecordedBalance: number;
+  totalSavings: number;
+  actualSavingsContributions: number;
+  unassignedTransactionCount: number;
 }
 
 /** A date with its grouped entries — for the recent-entries list. */
@@ -156,9 +203,16 @@ export interface RecurringBillDisplay {
   name: string;
   amount: number;
   currency: string;
-  cadence: "week" | "fortnight" | "month";
+  cadence: "week" | "fortnight" | "month" | "year";
   /** Day-of-month (1..31) for monthly cadence. Null when not set. */
   dueDay: number | null;
+  nextPaymentDate: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
+  description: string | null;
+  paidThroughDate: string | null;
   active: boolean;
   sortOrder: number;
 }
@@ -194,11 +248,13 @@ export interface CategoryBudgetRow {
   categoryId: string;       // matched category
   color: string;
   budgeted: number;
-  spent: number;
+  spent: number;             // actual spend + planning-only recurring-bill coverage
+  actualSpent: number;       // real MoneyEntry expenses only
+  planningCoverage: number;  // virtual plan coverage; never a MoneyEntry
   remaining: number;        // budgeted − spent (can be negative)
   percentUsed: number;      // 0..100, clamped for the bar
   overBudget: boolean;
-  paid: boolean;            // fully covered by an auto-paid recurring bill
+  paid: boolean;            // fully covered in the plan by a recurring bill
 }
 
 export interface BudgetPeriodDisplay {
@@ -226,9 +282,72 @@ export interface BudgetPeriodDisplay {
   leftToSpend: number;        // plannedSpendable − unplannedSpent (flexible balance)
   perDay: number;             // leftToSpend / max(daysLeft, 1)
   progressPercent: number;    // 0..100 (unplannedSpent / plannedSpendable)
+  overspentAmount: number;    // category overruns plus negative plan capacity
+  overallOverBudget: boolean;
+  transactionCount: number;
   categorySegments: BudgetCategorySegment[];
   categoryBudgets: CategoryBudgetRow[]; // committed items matched to categories, with drawdown
   recentEntries: MoneyEntryDisplay[];  // most recent period expenses (up to N)
+}
+
+export interface BillAllocationRow {
+  accountId: string | null;
+  accountName: string;
+  required: number;
+  available: number;
+  shortfall: number;
+  bills: Array<{
+    id: string;
+    name: string;
+    amount: number;
+    dueDate: string | null;
+    paid: boolean;
+  }>;
+}
+
+export interface BillFundingSummary {
+  rows: BillAllocationRow[];
+  totalRequired: number;
+  totalShortfall: number;
+}
+
+export interface TransactionHistoryPage {
+  entries: MoneyEntryDisplay[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface SavingsForecastDisplay {
+  targetDate: string;
+  periodsOfHistory: number;
+  futureFortnights: number;
+  confidence: "insufficient" | "limited" | "representative";
+  currentTotalBalance: number;
+  currentSavingsBalance: number;
+  netPerFortnight: { conservative: number; baseline: number; optimistic: number };
+  savingsPerFortnight: number;
+  projectedTotal: { conservative: number; baseline: number; optimistic: number };
+  projectedSavings: number;
+}
+
+export interface SavingsGoalDisplay {
+  id: string;
+  name: string;
+  targetAmount: number;
+  targetDate: string;
+  currency: string;
+  accountId: string | null;
+  accountName: string | null;
+  currentAmount: number;
+  remaining: number;
+  progressPercent: number;
+  requiredPerFortnight: number;
+  forecastAtDeadline: number;
+  onTrack: boolean;
+  estimatedCompletionDate: string | null;
+  active: boolean;
 }
 
 // ── GoalTracker ─────────────────────────────────────────────────────────────
