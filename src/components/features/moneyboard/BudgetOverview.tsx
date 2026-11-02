@@ -172,16 +172,16 @@ export function BudgetOverview({ budget, categories, currency, bills, accountOve
       >
       <div className="md:col-span-3 flex flex-col pb-4 md:pb-0">
         {/* Row 1 — selectors */}
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-1.5 min-[360px]:gap-2 mb-3">
           <CurrencySelector currency={currency} onChange={setCurrency} />
           <PeriodDropdown value={budget.periodType} onChange={setPeriodType} />
           <span
             className={cn(
-              "ml-auto h-9 flex items-center gap-2 rounded-full pl-3 pr-3.5",
+              "ml-auto h-9 flex items-center gap-2 rounded-full px-2.5 min-[360px]:pl-3 min-[360px]:pr-3.5",
               isCurrent ? "bg-sage-tint" : "bg-white border border-border-soft shadow-sm",
             )}
           >
-            {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-sage" />}
+            {isCurrent && <span className="hidden min-[360px]:block w-1.5 h-1.5 rounded-full bg-sage" />}
             <span
               className={cn(
                 "text-[11px] font-semibold font-mono uppercase tracking-[0.12em]",
@@ -328,17 +328,17 @@ export function BudgetOverview({ budget, categories, currency, bills, accountOve
 
           {/* Committed / Protected */}
           <div className="flex items-stretch">
-            <div className="flex-1 flex flex-col gap-1.5">
+            <div className="flex-1 min-w-0 flex flex-col gap-1.5">
               <div className="flex items-center gap-1.5">
                 <LockIcon />
                 <span className="text-[10px] font-semibold font-mono uppercase tracking-[0.14em] text-faint">Committed</span>
               </div>
-              <div className="text-[16px] font-mono font-semibold text-muted">
+              <div className="text-[16px] font-mono font-semibold text-muted tabular-nums [overflow-wrap:anywhere]">
                 {formatMoney(budget.committedTotal, { currency })}
               </div>
             </div>
             <div className="w-px bg-border-soft mx-4" />
-            <div className="flex-1 flex flex-col gap-1.5">
+            <div className="flex-1 min-w-0 flex flex-col gap-1.5">
               <div className="flex items-center gap-1.5">
                 <ShieldIcon />
                 <span className="text-[10px] font-semibold font-mono uppercase tracking-[0.14em] text-faint">Protected</span>
@@ -352,7 +352,7 @@ export function BudgetOverview({ budget, categories, currency, bills, accountOve
                   {protectHidden ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
-              <div className="text-[16px] font-mono font-semibold text-muted tabular-nums">
+              <div className="text-[16px] font-mono font-semibold text-muted tabular-nums [overflow-wrap:anywhere]">
                 {protectHidden ? "••••••" : formatMoney(budget.protectValue, { currency })}
               </div>
             </div>
@@ -406,67 +406,74 @@ export function BudgetOverview({ budget, categories, currency, bills, accountOve
             <div className="text-[10px] font-semibold font-mono uppercase tracking-[0.18em] text-faint mb-3">
               Category budgets
             </div>
-            <div className="bg-white border border-border-soft rounded-[16px] shadow-card px-4 md:px-5">
+            <div className="@container bg-white border border-border-soft rounded-[16px] shadow-card px-4 md:px-5">
               {budget.categoryBudgets.map((b, index) => {
                 const progressLabel = b.overBudget
                   ? `Over budget by ${formatMoney(Math.abs(b.remaining), { currency })}`
                   : b.paid
-                    ? "100% covered"
-                    : b.remaining === 0
-                      ? "100% used"
-                      : `${formatMoney(b.remaining, { currency })} left · ${b.percentUsed}% used`;
+                    ? "Fully covered in plan"
+                    : `${formatMoney(b.remaining, { currency })} left · ${b.percentUsed}% used`;
+                // Actual vs plan-only coverage is secondary on a phone: it lives in
+                // the tooltip / accessible description instead of its own line.
+                const breakdown = `${formatMoney(b.actualSpent, { currency })} actual${
+                  b.planningCoverage > 0 ? ` · ${formatMoney(b.planningCoverage, { currency })} planned` : ""
+                }`;
                 return (
                   <div
                     key={b.key}
+                    title={`${b.name} — ${breakdown} · ${progressLabel}`}
                     className={cn(
-                      "py-4 md:py-4.5",
+                      "py-2.5",
                       index < budget.categoryBudgets.length - 1 && "border-b border-border-soft",
                     )}
                   >
-                    <div className="min-w-0">
-                      <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                        <div className="min-w-0 flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
-                          <span className="text-[14px] font-semibold leading-snug text-ink break-words [overflow-wrap:anywhere]">{b.name}</span>
-                          {b.paid && (
-                            <span className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.08em] text-sage bg-sage-tint border border-sage-border px-2 py-0.5 rounded-full">
-                              Covered in plan
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[12.5px] font-mono text-muted tabular-nums break-words [overflow-wrap:anywhere] sm:text-right">
-                          {formatMoney(b.spent, { currency })} covered / {formatMoney(b.budgeted, { currency })} budget
-                        </div>
+                    <div className="flex items-baseline gap-2">
+                      <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                        <span className="truncate text-[14px] font-semibold text-ink">{b.name}</span>
+                        {b.paid && (
+                          <span
+                            title="Covered in plan by a recurring bill"
+                            className="shrink-0 inline-flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.08em] text-sage bg-sage-tint border border-sage-border px-1 py-0.5 rounded-full @[18rem]:px-1.5"
+                          >
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M20 6L9 17l-5-5" />
+                            </svg>
+                            <span className="sr-only @[18rem]:not-sr-only">Covered</span>
+                          </span>
+                        )}
+                      </div>
+                      {/* Budget drops under the spent figure only when both can't fit. */}
+                      <div className="shrink-0 max-w-[62%] flex flex-wrap justify-end items-baseline gap-x-1 font-mono tabular-nums text-right">
+                        <span className="whitespace-nowrap text-[13px] font-semibold text-ink">{formatMoney(b.spent, { currency })}</span>
+                        <span className="whitespace-nowrap text-[11.5px] text-faint">/ {formatMoney(b.budgeted, { currency })}</span>
                       </div>
                     </div>
-                    <div
-                      role="progressbar"
-                      aria-label={`${b.name} budget progress`}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={b.percentUsed}
-                      aria-valuetext={progressLabel}
-                      className="h-2.5 rounded-full bg-paper overflow-hidden mt-3"
-                    >
+                    <div className="mt-1.5 flex items-center gap-2.5">
                       <div
-                        className="h-full rounded-full transition-[width] duration-300"
-                        style={{
-                          width: `${b.percentUsed}%`,
-                          background: b.overBudget ? "#8A3F2E" : b.color,
-                        }}
-                      />
-                    </div>
-                    <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                      <span className="text-[11.5px] font-mono text-muted tabular-nums break-words [overflow-wrap:anywhere]">
-                        {formatMoney(b.actualSpent, { currency })} actual
-                        {b.planningCoverage > 0 && <> · {formatMoney(b.planningCoverage, { currency })} planned</>}
-                      </span>
+                        role="progressbar"
+                        aria-label={`${b.name} budget progress`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={b.percentUsed}
+                        aria-valuetext={`${progressLabel} · ${breakdown}`}
+                        className="flex-1 min-w-0 h-1.5 rounded-full bg-paper overflow-hidden"
+                      >
+                        <div
+                          className="h-full rounded-full transition-[width] duration-300"
+                          style={{
+                            width: `${b.percentUsed}%`,
+                            background: b.overBudget ? "#8A3F2E" : b.color,
+                          }}
+                        />
+                      </div>
                       <span
+                        aria-hidden
                         className={cn(
-                          "text-[11.5px] font-mono font-semibold tabular-nums",
+                          "shrink-0 min-w-[2.25rem] whitespace-nowrap text-right text-[11px] leading-none font-mono font-semibold tabular-nums",
                           b.overBudget ? "text-[#8A3F2E]" : b.paid ? "text-sage" : "text-muted",
                         )}
                       >
-                        {progressLabel}
+                        {b.overBudget ? `+${formatMoney(Math.abs(b.remaining), { currency })}` : `${b.percentUsed}%`}
                       </span>
                     </div>
                   </div>
@@ -491,33 +498,58 @@ export function BudgetOverview({ budget, categories, currency, bills, accountOve
             </div>
           ) : (
             <div className="bg-white border border-border-soft rounded-[16px] shadow-card overflow-hidden">
-              {budget.recentEntries.map((e, i) => (
-                <div key={e.id} className={cn("flex items-start gap-3 px-4 py-4", i < budget.recentEntries.length - 1 && "border-b border-border-soft")}>
-                  <div className="flex flex-1 items-start gap-3 min-w-0">
+              {budget.recentEntries.map((e, i) => {
+                const title = e.note?.trim() || e.category.label;
+                const meta = `${e.category.label} · ${e.account?.name ?? "Unassigned"} · ${e.date.slice(5)} · ${e.occurrenceTimeKnown ? e.time : "Time not recorded"}`;
+                // Visible line leads with when, and omits an unknown time rather
+                // than spelling it out; the full line stays in the tooltip / label.
+                const compactMeta = `${e.date.slice(5)}${e.occurrenceTimeKnown ? ` ${e.time}` : ""} · ${e.category.label} · ${e.account?.name ?? "Unassigned"}`;
+                return (
+                  <div
+                    key={e.id}
+                    className={cn(
+                      "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 px-3.5 py-2",
+                      i < budget.recentEntries.length - 1 && "border-b border-border-soft",
+                    )}
+                  >
                     <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                      className="row-span-2 w-8 h-8 rounded-full flex items-center justify-center"
                       style={{ background: "#EFE9DC" }}
                     >
-                      <CategoryIcon icon={e.category.icon} size={16} color={e.category.color} />
+                      <CategoryIcon icon={e.category.icon} size={15} color={e.category.color} />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-1 min-[390px]:flex-row min-[390px]:items-start min-[390px]:justify-between min-[390px]:gap-3">
-                        <div className="text-[14.5px] font-medium leading-snug text-ink break-words [overflow-wrap:anywhere]">{e.note?.trim() || e.category.label}</div>
-                        <span className={cn("shrink-0 text-[14.5px] font-mono font-semibold tabular-nums", e.kind === "income" ? "text-sage" : "text-ink")}>
-                          {e.kind === "income" ? "+" : "−"}{formatMoney(e.amount, { currency })}
-                        </span>
-                      </div>
-                      <div className="text-[11.5px] text-muted mt-1 font-mono leading-relaxed break-words [overflow-wrap:anywhere]">
-                        {e.category.label} · {e.account?.name ?? "Unassigned"} · {e.date.slice(5)} · {e.occurrenceTimeKnown ? e.time : "Time not recorded"}
-                      </div>
-                      <div className="flex items-center gap-2 mt-2.5">
-                        <button type="button" onClick={() => setEditingEntry(e)} className="h-10 px-3 rounded-[10px] bg-paper text-[12px] font-semibold text-ink hover:text-sage" aria-label={`Edit ${e.note?.trim() || e.category.label}`}>Edit</button>
-                        <button type="button" onClick={() => deleteEntry(e.id)} disabled={deletingId === e.id} className="h-10 px-3 rounded-[10px] text-[12px] font-semibold text-[#8A3F2E] hover:bg-[#8A3F2E]/8 disabled:opacity-40" aria-label={`Delete ${e.note?.trim() || e.category.label}`}>Delete</button>
-                      </div>
+                    <div className="truncate text-[14px] font-medium text-ink" title={title}>{title}</div>
+                    <span className={cn("whitespace-nowrap text-right text-[14px] font-mono font-semibold tabular-nums", e.kind === "income" ? "text-sage" : "text-ink")}>
+                      {e.kind === "income" ? "+" : "−"}{formatMoney(e.amount, { currency })}
+                    </span>
+                    <div className="relative truncate text-[11.5px] font-mono text-muted" title={meta}>
+                      <span aria-hidden>{compactMeta}</span>
+                      <span className="sr-only">{meta}</span>
+                    </div>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditingEntry(e)}
+                        aria-label={`Edit ${title}`}
+                        title="Edit"
+                        className="relative w-9 h-8 rounded-[9px] flex items-center justify-center text-muted hover:bg-paper hover:text-sage after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']"
+                      >
+                        <PencilIcon />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteEntry(e.id)}
+                        disabled={deletingId === e.id}
+                        aria-label={`Delete ${title}`}
+                        title="Delete"
+                        className="relative w-9 h-8 rounded-[9px] flex items-center justify-center text-[#8A3F2E] hover:bg-[#8A3F2E]/8 disabled:opacity-40 after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']"
+                      >
+                        {deletingId === e.id ? <Spinner /> : <TrashIcon />}
+                      </button>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -860,6 +892,25 @@ function PlusIcon({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
     </svg>
   );
 }
